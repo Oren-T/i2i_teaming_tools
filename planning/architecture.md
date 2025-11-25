@@ -18,7 +18,22 @@
 
 ---
 
-### 2\. Column indexing strategy
+### 2\. Deployment Strategy (Library vs Client)
+
+* **Architecture**: "Thin Client" script + Central Library.
+* **Central Library**:
+  * Contains all business logic (`processNewProjects`, `dailyMaintenance`, `generateId`).
+  * Managed in a central repo/script project.
+  * Versioned updates.
+* **Client Script (per District)**:
+  * Minimal code; acts as a bridge.
+  * Contains `CONFIG` object (District ID, Year, etc - though some of this may end up living in a user-facing sheet).
+  * Defines simple triggers (`onOpen`, `timeDriven`) that strictly pass execution to the Library functions with the local config.
+  * **Benefit**: Updates can be pushed to all districts by updating the library version, without editing individual district scripts.
+
+---
+
+### 3\. Column indexing strategy
 
 * On script startup:  
   * Read row 2 of Main Projects File.  
@@ -30,7 +45,7 @@
 
 ---
 
-### 3\. Project ID generation
+### 4\. Project ID generation
 
 * Format: `<DIST>-yy_yy-####` (e.g. `NUSD-25_26-0024`).  
 * Store `(district, year, next_serial)` in a config sheet and update it with ScriptLock.  
@@ -38,7 +53,7 @@
 
 ---
 
-### 4\. Automation Status lifecycle
+### 5\. Automation Status lifecycle
 
 * `automation_status` values and transitions:  
   * `''` → user fills row.  
@@ -55,11 +70,15 @@
 
 ---
 
-### 5\. Triggers and flows
+### 6\. Triggers and flows
 
 * **Form submission trigger**  
-  * Normalizes form input into a Main Projects File row.  
-  * Sets `automation_status` to `Ready`. (MAYBE) manually kicks off batch trigger run.  
+  * **Ingestion Flow**: Google Form -> Default "Form Responses" Sheet -> Script -> Main Projects File.  
+  * **Process**:  
+    * `onFormSubmit` trigger activates when a response is submitted. It should probably be form-bound. 
+    * Script reads the raw response, normalizes the data (mapping form questions to project keys), and appends it to the **Main Projects File**.  
+    * Sets `automation_status` to `Ready`.  
+    * (Optional) Manually kicks off the batch trigger to process it immediately.
 * **Time-driven batch trigger (every 10 minutes)**  
   * Function: `processNewProjects()`.  
   * Acquires ScriptLock at the start to prevent overlapping runs (manual trigger vs timed trigger) from processing the same `Ready`/`Updated`/`Delete` rows simultaneously.  
@@ -78,6 +97,12 @@
   * Note: The `Updated` status handles explicit user-requested changes. The daily calendar sync (below) serves as a safety net to catch any discrepancies that may have been missed.  
 * **Manual “Run now”**  
   * Custom menu or button calling `processNewProjects()`.  
+* **Permissions Management (Manual)**
+  * Custom menu item: "Refresh Permissions".  
+  * Action: Re-applies sharing settings to the Main Projects File based on the Staff Directory roles. Not strictly enforced by a timer, but available to fix discrepancies.
+* **Staff Directory Sync (On Edit)**
+  * Trigger: `onEdit` or Manual run on the Staff Directory sheet.
+  * Action: Updates the dropdown options in the Google Form (Assignees, Leads) to match the currently active staff in the directory.
 * **Time-driven daily trigger (e.g. 8am)**  
   * Function: `dailyMaintenance()`.  
   * Responsibilities:  
@@ -99,7 +124,7 @@
 
 ---
 
-### 6\. Calendar/event data
+### 7\. Calendar/event data
 
 * Use a single “robo” calendar per district for all project events.  
 * Store `calendar_event_id` in Main Projects File for each project.  
@@ -110,7 +135,7 @@
 
 ---
 
-### 7\. Reminder offsets implementation
+### 8\. Reminder offsets implementation
 
 * Reminder offsets in Main Projects File:  
   * Multi-select dropdown stores user-friendly values (e.g. `3 days before,1 week before,2 weeks before` representing days before due date).
@@ -118,7 +143,7 @@
 
 ---
 
-### 8\. Folder \+ templates
+### 9\. Folder \+ templates
 
 * On `Created`:  
   * Create folder named `"Project Name [Project ID]"` under a district-level parent folder.  
