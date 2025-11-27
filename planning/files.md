@@ -1,7 +1,8 @@
 ### Main Projects File (Google Sheets)
 
 * **Project Management Sheet** - Main data sheet with all project records (two header rows: user labels + internal keys)
-  * Internal keys: `project_id`, `created_at`, `school_year`, `goal_number`, `action_number`, `category`, `project_name`, `description`, `assignee_emails`, `project_lead_email`, `due_date`, `project_status`, `completed_at`, `reminder_offsets`, `automation_status`, `calendar_event_id`, `folder_id`, `notes`
+  * Row 1 (user-facing labels): Project ID, Created At, School Year, Goal #, Action #, Category (default is LCAP), Title, Description, Assigned to, Requested by, Deadline, Project Status, Completed At?, Reminder Timeline, Automation Status, Calendar Event ID, Folder ID, Notes
+  * Row 2 (internal keys): `project_id`, `created_at`, `school_year`, `goal_number`, `action_number`, `category`, `project_name`, `description`, `assignee`, `requested_by`, `due_date`, `project_status`, `completed_at`, `reminder_offsets`, `automation_status`, `calendar_event_id`, `folder_id`, `notes`
 
 * **Status Snapshot** - Hidden sheet tracking previous day's project statuses for change detection (`project_id`, `project_status`)
 
@@ -28,6 +29,8 @@
 | Email Template - New Project | | Google Doc ID for new project assignment email template |
 | Email Template - Reminder | | Google Doc ID for reminder email template |
 | Email Template - Status Change | | Google Doc ID for status change digest email template |
+| Email Template - Project Update | | Google Doc ID for project update notification email template |
+| Email Template - Project Cancellation | | Google Doc ID for project cancellation notification email template |
 
 ---
 

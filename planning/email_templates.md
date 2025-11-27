@@ -74,6 +74,52 @@ Thank you.
 
 ---
 
+## Project Update Notification
+
+Project Updated: {{PROJECT_TITLE}}
+
+Hello {{RECIPIENT_NAME}},
+
+A project you are involved with has been updated:
+
+**Project:** {{PROJECT_TITLE}}
+**Category:** {{CATEGORY}}
+**Requested by:** {{REQUESTED_BY_NAME}}
+**Updated Deadline:** {{DEADLINE}}
+**Project ID:** {{PROJECT_ID}}
+
+**Description:**
+{{DESCRIPTION}}
+
+The project details, calendar event, and attendees have been updated to reflect these changes.
+
+Access the project folder: {{FOLDER_LINK}}
+
+Thank you.
+
+---
+
+## Project Cancellation Notification
+
+Project Cancelled: {{PROJECT_TITLE}}
+
+Hello {{RECIPIENT_NAME}},
+
+A project you were involved with has been cancelled:
+
+**Project:** {{PROJECT_TITLE}}
+**Category:** {{CATEGORY}}
+**Requested by:** {{REQUESTED_BY_NAME}}
+**Project ID:** {{PROJECT_ID}}
+
+The calendar event for this project has been cancelled.
+
+If you have any questions about this cancellation, please contact {{REQUESTED_BY_NAME}} directly.
+
+Thank you.
+
+---
+
 ## Token Reference
 
 | Token | Description |

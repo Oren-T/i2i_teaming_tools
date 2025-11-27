@@ -1,0 +1,106 @@
+# Teaming Tool Style Guide
+
+Google Apps Script library for managing project workflows. Central library + thin client architecture.
+
+## JavaScript Style
+
+### Braces & Formatting
+- **K&R braces** (opening brace on same line)
+- **2-space indentation**
+- **Single blank line** between functions
+
+### Variables
+- **`const` by default**, `let` only when reassigning
+- **Never use `var`**
+
+### Equality
+- **Always `===` and `!==`** (strict equality)
+
+### Strings
+- **Template literals** for interpolation: `` `Sent to ${email}` ``
+- Single quotes for simple strings: `'Ready'`
+
+### Loops & Iteration
+- **`for...of`** for iteration with side effects or early exit
+- **`.map()`** for transforming arrays
+- **`.filter()`** for filtering arrays
+- **`.forEach()`** acceptable for simple side effects
+- **`.find()`** for finding single element
+- **`.some()` / `.every()`** for boolean checks
+
+### Null / Undefined Checks
+Either style acceptable, be consistent within a function:
+- Explicit: `if (!arr || arr.length === 0)`
+- Optional chaining: `if (!arr?.length)`
+
+### Destructuring
+**Occasional use** — when accessing 2+ properties multiple times:
+```javascript
+const { projectId, projectName, dueDate } = project;
+```
+Avoid nested destructuring and over-destructuring for one-off access.
+
+### Arrow Functions
+**Callbacks only** — not for named functions or class methods:
+```javascript
+const emails = assignees.map(a => a.email);
+withBackoff(() => GmailApp.sendEmail(to, subject, body));
+```
+
+## Comments
+
+### JSDoc
+All functions get JSDoc with `@param` and `@returns`.
+
+### Inline Comments
+Explain **why**, not **what**. Use to introduce logical blocks or non-obvious decisions.
+
+## Logging
+
+### Debug Flag Pattern
+```javascript
+const DEBUG = true;
+
+DEBUG && console.log(`Processing ${project.projectId}`);
+```
+
+- **Always log**: Errors, notable events (emails sent, folders created)
+- **Debug-only**: Entry/exit, intermediate values, loop iterations
+- **Never log**: Sensitive data
+
+## Error Handling
+
+- try/catch around external API calls (Drive, Gmail, Calendar)
+- Log error with context, notify admins
+- Guard clauses with early returns at top of functions
+
+## Naming
+
+- **Functions**: camelCase, verb-first (`processProjects`, `sendReminder`)
+- **Variables**: camelCase, descriptive (`assigneeEmails` not `emails`)
+- **Booleans**: prefix with `is`, `has`, `should`
+- **Constants**: UPPER_SNAKE_CASE for true constants
+- **Classes**: PascalCase, noun-based (`ProjectService`)
+
+## Apps Script Specifics
+
+### Library Exposure
+Use `function` declarations for library functions (not arrows) — only enumerable function declarations are visible to consumers.
+
+### Classes in Libraries
+Keep classes **internal**. Expose only high-level entry-point functions that wire up classes internally:
+```javascript
+// Public API (visible to consumers)
+function processNewProjects(spreadsheetId) {
+  const ctx = new ExecutionContext(spreadsheetId);
+  ctx.projectService.processReadyProjects();
+  ctx.projectSheet.flush();
+}
+
+// Classes stay internal, not exposed
+class ExecutionContext { ... }
+class ProjectService { ... }
+```
+
+### Batch Operations
+Minimize API calls — read/write in batches, not per-row.

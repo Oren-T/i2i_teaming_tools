@@ -74,18 +74,41 @@
     * `Delete (Notify)` or `Delete (Don't Notify)` to request calendar deletion; or, `Updated` to set a notification that the information has been updated. The script running every 10 minutes should detect updates and respond accordingly, then change the status back to `Created` once the update has been processed.  
 * Enforcement: drop-down validation. For a blank row, the only option in the dropdown is `Ready` (reserve `Created` for the script). Once the code changes a status to `Created`, the dropdown options change to be only `Created`, `Updated`, `Delete (Notify)`, or `Delete (Don't Notify)`. If status is `Error`, users can set it back to `Ready` to retry.
 
+#### State Machine
+
+| Current Status | Valid Next States | Triggered By | Action |
+|----------------|-------------------|--------------|--------|
+| (blank) | Ready | User | User finished entering row |
+| Ready | Created, Error | Automation | Batch processes the row |
+| Created | Updated, Delete (Notify), Delete (Don't Notify) | User | User requests change |
+| Updated | Created | Automation | Re-sync complete |
+| Delete (Notify) | Deleted | Automation | Cancel event, notify attendees, hide row |
+| Delete (Don't Notify) | Deleted | Automation | Cancel event, hide row |
+| Error | Ready | User | User retries after fixing issue |
+| Deleted | (terminal) | — | Row is hidden, no further processing |
+
+#### Dropdown Validation Rules
+
+| Row State | Dropdown Options Available |
+|-----------|---------------------------|
+| Blank row (new entry) | `Ready` only |
+| `Created` | `Created`, `Updated`, `Delete (Notify)`, `Delete (Don't Notify)` |
+| `Error` | `Ready` (to retry) |
+| Other states (`Ready`, `Updated`, `Delete *`, `Deleted`) | Locked (no user edits) |
+
 ---
 
 ### 6\. Triggers and flows
 
 * **Form submission trigger**  
-  * **Ingestion Flow**: Google Form -> Default "Form Responses" Sheet -> Script -> Main Projects File.  
+  * **Architecture decision:** The Google Form is linked to send responses to a **hidden "Form Responses (Raw)" tab** within the Main Projects File spreadsheet. This allows a single spreadsheet-bound script to handle all triggers (no separate form-bound script needed).
+  * **Ingestion Flow**: Google Form -> Hidden "Form Responses (Raw)" tab -> `onFormSubmit` trigger -> Script normalizes and appends to Main Projects sheet.  
   * **Process**:  
-    * `onFormSubmit` trigger activates when a response is submitted. It should probably be form-bound. 
-    * Script reads the raw response, normalizes the data (mapping form questions to project keys), and appends it to the **Main Projects File**.  
-    * Sets `assignee` from the form submitter's email address (automatically captured by Google Forms, then directory sheet can back into the actual value).  
+    * `onFormSubmit` trigger (installable, on the spreadsheet) activates when a form response is submitted.
+    * Script reads the raw response from the hidden tab, normalizes the data (mapping form questions to project keys), and appends it to the main **Projects** sheet.  
+    * Sets `requested_by` from the form submitter's email address (automatically captured by Google Forms, then looked up in Directory for the name).  
     * Sets `automation_status` to `Ready`.  
-    * (Optional) Manually kicks off the batch trigger to process it immediately.
+    * (Optional) Immediately kicks off project processing rather than waiting for the 10-minute batch.
 * **Time-driven batch trigger (every 10 minutes)**  
   * Function: `processNewProjects()`.  
   * Acquires ScriptLock at the start to prevent overlapping runs (manual trigger vs timed trigger) from processing the same `Ready`/`Updated`/`Delete` rows simultaneously.  
@@ -127,7 +150,7 @@
        * Read previous statuses from Status Snapshot sheet.  
        * Join by `project_id` and identify rows where `project_status` differs between current and snapshot.  
        * For projects with status changes:  
-         * Group by person (project_lead_email + assignee_emails).  
+         * Group by person (requested_by + assignee).  
          * Send one email per person summarizing all projects where status changed.  
        * After sending all digest emails, overwrite Status Snapshot with current statuses (all active projects).  
        * Note: If a project exists in Main Projects File but not in snapshot, add it to snapshot. If a project exists in snapshot but not in Main Projects File (deleted/hidden), remove it from snapshot.  
