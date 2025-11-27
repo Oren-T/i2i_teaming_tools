@@ -81,7 +81,7 @@
 
 #### Project Folder
 
-- When a project folder gets created, depending on the type of project it is, one or multiple pre-generated template files will be auto-populated into the project folder.  
-- Joel will create all of these template files.  
-- Custom tokens can be auto-substituted into some files \- e.g. if there is a Project Name field in the Google Doc template, we can auto-fill that with the automation. Same with deadline, etc.  
+- When a project folder gets created, a single pre-generated template file (Google Sheets) will be copied into the project folder.  
+- Joel will create the template file.  
+- Custom tokens can be auto-substituted into the template's Overview tab \- e.g. Project Name, deadline, assignee, etc. are auto-filled during the copy process.  
 - In the old system, Project Status lived within a **Project Folder** google sheet for tracking the project. However, now, we have moved Project Status to live in the **Main Projects File** instead, and be manually updated by users.
