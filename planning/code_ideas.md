@@ -270,9 +270,9 @@ Dirty tracking enables efficient partial writes — only modified cells are writ
 
 ### The Challenge with Classes in Libraries
 
-When you add a library with identifier `TeamingToolLib`, you call into it as `TeamingToolLib.someFunction()`. Only **enumerable global properties** are visible to consumers — function declarations, `var` globals, and things explicitly attached to the global object.
+When you add a library with identifier `i2iTT`, you call into it as `i2iTT.someFunction()`. Only **enumerable global properties** are visible to consumers — function declarations, `var` globals, and things explicitly attached to the global object.
 
-A bare `class ProjectService { ... }` declaration creates a **non-enumerable** binding, so it does *not* show up as `TeamingToolLib.ProjectService`. This means `new TeamingToolLib.ProjectService(...)` will throw.
+A bare `class ProjectService { ... }` declaration creates a **non-enumerable** binding, so it does *not* show up as `i2iTT.ProjectService`. This means `new i2iTT.ProjectService(...)` will throw.
 
 **However**, you *can* expose a class constructor by binding it to an enumerable global:
 
@@ -283,7 +283,7 @@ var ProjectService = class ProjectService {
 };
 ```
 
-Then in the client: `const svc = new TeamingToolLib.ProjectService(config);` works.
+Then in the client: `const svc = new i2iTT.ProjectService(config);` works.
 
 ### Recommended Approach: High-Level Entry Points
 
@@ -334,16 +334,16 @@ The `ExecutionContext` class (defined in the Data Layer section above) handles a
 const SPREADSHEET_ID = 'abc123...';  // This district's Main Projects File
 
 function onBatchTrigger() {
-  TeamingToolLib.processNewProjects(SPREADSHEET_ID);
+  i2iTT.processNewProjects(SPREADSHEET_ID);
 }
 
 function onDailyTrigger() {
-  TeamingToolLib.runDailyMaintenance(SPREADSHEET_ID);
+  i2iTT.runDailyMaintenance(SPREADSHEET_ID);
 }
 
 function onFormSubmit(e) {
   // e.values, e.namedValues, e.range available from spreadsheet-bound trigger
-  TeamingToolLib.handleFormSubmission(SPREADSHEET_ID, e);
+  i2iTT.handleFormSubmission(SPREADSHEET_ID, e);
 }
 
 function onOpen() {
@@ -356,11 +356,11 @@ function onOpen() {
 }
 
 function manualRun() {
-  TeamingToolLib.processNewProjects(SPREADSHEET_ID);
+  i2iTT.processNewProjects(SPREADSHEET_ID);
 }
 
 function syncDropdowns() {
-  TeamingToolLib.syncFormDropdowns(SPREADSHEET_ID);
+  i2iTT.syncFormDropdowns(SPREADSHEET_ID);
 }
 ```
 

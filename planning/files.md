@@ -56,9 +56,9 @@
 
 ---
 
-### i2i Teaming Tool Library (Google Apps Script)
+### i2i Teaming Tool Library — `i2iTT` (Google Apps Script)
 
-*Central library with all business logic, shared across district instances*
+*Central library with all business logic, shared across district instances. Library identifier: `i2iTT`*
 
 ---
 

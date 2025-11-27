@@ -1,6 +1,6 @@
 # Teaming Tool Style Guide
 
-Google Apps Script library for managing project workflows. Central library + thin client architecture.
+Google Apps Script library for managing project workflows. Central library + thin client architecture. Live code is in the `i2iTeamingTool/` directory.
 
 ## JavaScript Style
 
