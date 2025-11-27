@@ -5,8 +5,9 @@
   * Row 2: internal keys (e.g. `project_id`, `project_name`, `project_status`, `automation_status`, `due_date`, `requested_by`, `assignee`, `folder_id`, `calendar_event_id`, `reminder_offsets`, etc.).  
   * Rows 3+: one project per row.  
 * **Staff Directory**  
-  * Columns: `email`, `name`, `role`, `active`, etc.  
+  * Columns: `Name`, `Email Address`, `Permissions`.  
   * Used for validating assignee/lead emails and powering dropdowns.  
+  * Active status is inferred from `Permissions` column (empty/none/no access = inactive).  
 * **Status Snapshot sheet**  
   * Structure:  
     * Row 1: Header row with column labels: `project_id`, `project_status`  
@@ -19,8 +20,6 @@
 * **Reminder Profiles / Offsets sheet**  
   * Stores default reminder offsets and labels (e.g. `3`, `7`, `14` days before).  
   * Used to power dropdown choices and documentation.  
-* **Templates config sheet**  
-  * Maps project category → template file IDs (docs, sheets, etc.).
 
 ---
 

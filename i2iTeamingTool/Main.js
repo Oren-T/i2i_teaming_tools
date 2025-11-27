@@ -1,0 +1,459 @@
+/**
+ * Main.js - Public API for the i2i Teaming Tool Library.
+ *
+ * These functions are exposed to client scripts and handle all business logic.
+ * Client scripts should call these functions with their spreadsheet ID.
+ *
+ * Library identifier: i2iTT
+ * Client usage: i2iTT.processNewProjects(SPREADSHEET_ID)
+ */
+
+// ===== PUBLIC API FUNCTIONS =====
+
+/**
+ * Processes projects with Ready, Updated, or Delete status.
+ * Called by the 10-minute batch trigger or manual "Run Now" action.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @throws {Error} If validation fails or processing encounters an unrecoverable error
+ */
+function processNewProjects(spreadsheetId) {
+  console.log('=== processNewProjects starting ===');
+
+  // Acquire script lock to prevent overlapping runs
+  const lock = LockService.getScriptLock();
+  const acquired = lock.tryLock(30000);
+
+  if (!acquired) {
+    console.log('processNewProjects: Could not acquire lock, another instance may be running');
+    return;
+  }
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
+
+    // Process Ready projects (create folder, templates, calendar event)
+    ctx.projectService.processReadyProjects();
+
+    // Process Updated projects (re-sync calendar event)
+    ctx.projectService.processUpdatedProjects();
+
+    // Process Delete requests (cancel event, hide row)
+    ctx.projectService.processDeleteRequests();
+
+    // Flush all changes to the sheet
+    ctx.flush();
+
+    // Update dropdown validations to reflect new statuses
+    ctx.validationService.updateAllDropdownValidations();
+
+    console.log('=== processNewProjects completed ===');
+
+  } catch (error) {
+    console.error(`processNewProjects error: ${error.message}`);
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Runs daily maintenance tasks.
+ * Called by the daily 8am trigger.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @throws {Error} If validation fails or maintenance tasks encounter an unrecoverable error
+ */
+function runDailyMaintenance(spreadsheetId) {
+  console.log('=== runDailyMaintenance starting ===');
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
+
+    // Run all daily maintenance tasks
+    ctx.maintenanceService.runDailyMaintenance();
+
+    // Flush any changes
+    ctx.flush();
+
+    console.log('=== runDailyMaintenance completed ===');
+
+  } catch (error) {
+    console.error(`runDailyMaintenance error: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Syncs Google Form dropdowns with Directory and Codes sheets.
+ * Called manually from the menu or when Directory/Codes are edited.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @throws {Error} If form sync fails
+ */
+function syncFormDropdowns(spreadsheetId) {
+  console.log('=== syncFormDropdowns starting ===');
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+
+    // Sync all form dropdowns
+    ctx.formService.syncAllDropdowns();
+
+    console.log('=== syncFormDropdowns completed ===');
+
+  } catch (error) {
+    console.error(`syncFormDropdowns error: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Handles a form submission event.
+ * Called by the onFormSubmit trigger (spreadsheet-bound).
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @param {Object} event - The form submission event object
+ * @throws {Error} If validation fails or form processing encounters an error
+ */
+function handleFormSubmission(spreadsheetId, event) {
+  console.log('=== handleFormSubmission starting ===');
+
+  // Acquire script lock
+  const lock = LockService.getScriptLock();
+  const acquired = lock.tryLock(30000);
+
+  if (!acquired) {
+    console.log('handleFormSubmission: Could not acquire lock');
+    return;
+  }
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
+
+    // Normalize form response and append to Projects sheet
+    ctx.projectService.normalizeAndAppendFormResponse(event);
+
+    // Process the newly added Ready project immediately
+    ctx.projectService.processReadyProjects();
+
+    // Flush all changes
+    ctx.flush();
+
+    // Update dropdown validations
+    ctx.validationService.updateAllDropdownValidations();
+
+    console.log('=== handleFormSubmission completed ===');
+
+  } catch (error) {
+    console.error(`handleFormSubmission error: ${error.message}`);
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Handles edit events on the Main Projects File.
+ * Called by the onEdit trigger.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @param {Object} event - The edit event object
+ */
+function handleEdit(spreadsheetId, event) {
+  const range = event.range;
+  const sheet = range.getSheet();
+  const sheetName = sheet.getName();
+
+  DEBUG && console.log(`handleEdit: Sheet "${sheetName}", cell ${range.getA1Notation()}`);
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+
+    // Handle edits to the Projects sheet
+    if (sheetName === SHEET_NAMES.PROJECTS) {
+      handleProjectsEdit(ctx, event);
+    }
+
+    // Handle edits to the Directory sheet
+    if (sheetName === SHEET_NAMES.DIRECTORY) {
+      DEBUG && console.log('handleEdit: Directory edited, syncing form dropdowns');
+      ctx.formService.syncAssigneeDropdown();
+    }
+
+    // Handle edits to the Codes sheet
+    if (sheetName === SHEET_NAMES.CODES) {
+      DEBUG && console.log('handleEdit: Codes edited, syncing form dropdowns');
+      ctx.formService.syncCategoryDropdown();
+    }
+
+    // Flush any changes
+    ctx.flush();
+
+  } catch (error) {
+    console.error(`handleEdit error: ${error.message}`);
+    // Don't throw - onEdit triggers should fail silently
+  }
+}
+
+/**
+ * Handles edit events specifically for the Projects sheet.
+ * Sets completed_at timestamp when project_status changes to "Completed".
+ *
+ * @param {ExecutionContext} ctx - The execution context
+ * @param {Object} event - The edit event object
+ */
+function handleProjectsEdit(ctx, event) {
+  const range = event.range;
+  const sheet = range.getSheet();
+
+  // Get the column that was edited
+  const col = range.getColumn();
+  const row = range.getRow();
+
+  // Skip header rows
+  if (row <= 2) {
+    return;
+  }
+
+  // Find the project_status column index
+  const statusColIndex = ctx.projectSheet.getColumnIndex('project_status');
+  if (statusColIndex === undefined) {
+    return;
+  }
+
+  // Check if project_status column was edited (convert to 1-based)
+  if (col === statusColIndex + 1) {
+    const newValue = String(event.value || '').trim();
+    const oldValue = String(event.oldValue || '').trim();
+
+    DEBUG && console.log(`handleProjectsEdit: Status changed from "${oldValue}" to "${newValue}"`);
+
+    // If status changed to Completed (and wasn't already)
+    if (newValue === PROJECT_STATUS.COMPLETED && oldValue !== PROJECT_STATUS.COMPLETED) {
+      const completedAtColIndex = ctx.projectSheet.getColumnIndex('completed_at');
+      if (completedAtColIndex !== undefined) {
+        sheet.getRange(row, completedAtColIndex + 1).setValue(new Date());
+        console.log(`Set completed_at for row ${row}`);
+      }
+    }
+  }
+}
+
+/**
+ * Refreshes sharing permissions on the Main Projects File based on Directory roles.
+ * Adds missing permissions, removes people not in Directory, and downgrades as needed.
+ * Called manually from the menu.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ */
+function refreshPermissions(spreadsheetId) {
+  console.log('=== refreshPermissions starting ===');
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    const file = DriveApp.getFileById(spreadsheetId);
+
+    // Get current editors and viewers (excluding owner)
+    const owner = file.getOwner();
+    const ownerEmail = owner ? owner.getEmail().toLowerCase() : '';
+    const currentEditors = file.getEditors().map(e => e.getEmail().toLowerCase());
+    const currentViewers = file.getViewers().map(v => v.getEmail().toLowerCase());
+
+    const permCol = ctx.directory.getColumnIndex(DIRECTORY_COLUMNS.PERMISSIONS);
+
+    if (permCol === undefined) {
+      console.log('refreshPermissions: No Permissions column in Directory');
+      return;
+    }
+
+    // Build map of email -> desired permission from Directory
+    const desiredPermissions = new Map();
+    for (let i = 1; i < ctx.directory.data.length; i++) {
+      const email = String(ctx.directory.data[i][ctx.directory.getColumnIndex(DIRECTORY_COLUMNS.EMAIL)] || '').trim().toLowerCase();
+      const perm = String(ctx.directory.data[i][permCol] || '').trim().toLowerCase();
+
+      if (!email || !isValidEmail(email)) {
+        continue;
+      }
+
+      if (perm === 'edit' || perm === 'editor') {
+        desiredPermissions.set(email, 'edit');
+      } else if (perm === 'view' || perm === 'viewer') {
+        desiredPermissions.set(email, 'view');
+      }
+      // Empty/none/no access = no entry in map (will be removed)
+    }
+
+    // Process additions and changes
+    for (const [email, desiredPerm] of desiredPermissions) {
+      const isEditor = currentEditors.includes(email);
+      const isViewer = currentViewers.includes(email);
+
+      if (desiredPerm === 'edit') {
+        if (!isEditor) {
+          // Need to add as editor (or upgrade from viewer)
+          if (isViewer) {
+            // Upgrade: remove viewer, add editor
+            try {
+              file.removeViewer(email);
+              file.addEditor(email);
+              console.log(`Upgraded to editor: ${email}`);
+            } catch (e) {
+              console.warn(`Could not upgrade ${email} to editor: ${e.message}`);
+            }
+          } else {
+            // New editor
+            try {
+              file.addEditor(email);
+              console.log(`Added editor: ${email}`);
+            } catch (e) {
+              console.warn(`Could not add editor ${email}: ${e.message}`);
+            }
+          }
+        }
+      } else if (desiredPerm === 'view') {
+        if (isEditor) {
+          // Downgrade: remove editor, add viewer
+          try {
+            file.removeEditor(email);
+            file.addViewer(email);
+            console.log(`Downgraded to viewer: ${email}`);
+          } catch (e) {
+            console.warn(`Could not downgrade ${email} to viewer: ${e.message}`);
+          }
+        } else if (!isViewer) {
+          // New viewer
+          try {
+            file.addViewer(email);
+            console.log(`Added viewer: ${email}`);
+          } catch (e) {
+            console.warn(`Could not add viewer ${email}: ${e.message}`);
+          }
+        }
+      }
+    }
+
+    // Remove people who are no longer in Directory or have no access
+    for (const email of currentEditors) {
+      if (email === ownerEmail) continue; // Never remove owner
+      if (!desiredPermissions.has(email)) {
+        try {
+          file.removeEditor(email);
+          console.log(`Removed editor: ${email}`);
+        } catch (e) {
+          console.warn(`Could not remove editor ${email}: ${e.message}`);
+        }
+      }
+    }
+
+    for (const email of currentViewers) {
+      if (!desiredPermissions.has(email)) {
+        try {
+          file.removeViewer(email);
+          console.log(`Removed viewer: ${email}`);
+        } catch (e) {
+          console.warn(`Could not remove viewer ${email}: ${e.message}`);
+        }
+      }
+    }
+
+    console.log('=== refreshPermissions completed ===');
+
+  } catch (error) {
+    console.error(`refreshPermissions error: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Creates the custom menu in the spreadsheet UI.
+ * Called by the onOpen trigger.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - The spreadsheet (optional, uses active if not provided)
+ */
+function createMenu(ss) {
+  const ui = SpreadsheetApp.getUi();
+
+  ui.createMenu('Teaming Tool')
+    .addItem('Run Now', 'manualRunNow')
+    .addItem('Sync Form Dropdowns', 'manualSyncDropdowns')
+    .addItem('Refresh Permissions', 'manualRefreshPermissions')
+    .addSeparator()
+    .addItem('View Status Summary', 'showStatusSummary')
+    .addToUi();
+
+  DEBUG && console.log('createMenu: Menu created');
+}
+
+// ===== HELPER FUNCTIONS FOR MENU ITEMS =====
+// These are called by menu items and need to be in the client script,
+// but we provide library versions that can be used by clients.
+
+/**
+ * Gets a status summary for the spreadsheet.
+ * @param {string} spreadsheetId - The spreadsheet ID
+ * @returns {Object} Status summary
+ */
+function getStatusSummary(spreadsheetId) {
+  const ctx = new ExecutionContext(spreadsheetId);
+  return ctx.getSummary();
+}
+
+/**
+ * Validates the spreadsheet configuration.
+ * @param {string} spreadsheetId - The spreadsheet ID
+ * @returns {Object} Validation results
+ */
+function validateConfiguration(spreadsheetId) {
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
+    return { valid: true, errors: [] };
+  } catch (error) {
+    return { valid: false, errors: [error.message] };
+  }
+}
+
+/**
+ * Initializes dropdown data validation for the automation_status column.
+ * Sets up dynamic validation rules based on each row's current status.
+ * Call this once during initial setup, or to reset validation rules.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ */
+function initializeDropdownValidation(spreadsheetId) {
+  console.log('=== initializeDropdownValidation starting ===');
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validationService.initializeColumnValidation();
+    console.log('=== initializeDropdownValidation completed ===');
+  } catch (error) {
+    console.error(`initializeDropdownValidation error: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Refreshes dropdown validation for all project rows.
+ * Updates validation rules to match current automation status values.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ */
+function refreshDropdownValidation(spreadsheetId) {
+  console.log('=== refreshDropdownValidation starting ===');
+
+  try {
+    const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validationService.updateAllDropdownValidations();
+    console.log('=== refreshDropdownValidation completed ===');
+  } catch (error) {
+    console.error(`refreshDropdownValidation error: ${error.message}`);
+    throw error;
+  }
+}
+

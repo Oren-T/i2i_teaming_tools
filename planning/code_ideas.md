@@ -124,6 +124,7 @@ Pattern of iterating through rows and setting "active" context variables for the
 | Service | `NotificationService` | All email sending, template loading/caching from Google Docs, token substitution |
 | Service | `MaintenanceService` | Daily tasks: reminders, status-change digest, late marking, calendar sync |
 | Service | `FormService` | Sync Google Form dropdowns with Directory/Codes sheets |
+| Service | `ValidationService` | Dynamic data validation for automation_status dropdown based on row state |
 | Utility | `Validator` | Startup validation of config keys, project columns, file access |
 
 ### ExecutionContext
