@@ -25,7 +25,7 @@
 - One record per project  
 - Project status is recorded as a change-able column in this sheet  
   * We will let people use a dynamic dropdown list of task statuses \- the suggested initial configuration will be: Not started, behind schedule, stuck, on track, completed  
-  * Project statuses can be manually updated by team members who have permission to access this sheet. In general, we probably want to track timestamps of project status changes, and protect other columns in this sheet from most peoples’ editing abilities.  
+  * Project statuses can be manually updated by team members who have permission to access this sheet. Status changes are tracked via the **Status Snapshot sheet** (see below), which compares current statuses to the previous day's snapshot to detect changes. Other columns in this sheet should be protected from most peoples' editing abilities.  
 - Automatic updates to the **Main Projects File** are triggered by one of two events:  
   1. A submission is made to the **Project submission form**  
   2. Manual entry of a new project row in the Main Projects File, when the Automation Status is set to Ready \- a background automation runs roughly every 10 minutes (and can be manually triggered from within the sheet) to see if any new projects have been manually created.  
@@ -39,7 +39,7 @@
   1. Determines if reminder notifications need to be sent (to the assignee only) for any currently incomplete projects.  
      - Sends email notifications to assigned staff of upcoming project deadlines at a pre-defined cadence. There will be a default cadence (e.g. 3 days before, 1 week before, 2 weeks before), but this can be changed on a per-project level using dropdown menus in this spreadsheet.
      - The dropdown menu will display user-friendly labels (e.g. "3 days before"), which map to integer values stored in helper columns/sheets. This allows for easy configuration changes.  
-  2. The project lead and all project assignees should receive an email notification if any project they are assigned to changed statuses in the past 24 hours. It probably makes sense to do this as a per-person daily digest \- i.e. “here are the projects you are on where the status changed in the past 24 hours,” to avoid a single person getting many notifications per day.  
+  2. The project lead and all project assignees should receive an email notification if any project they are assigned to changed statuses in the past 24 hours. This is detected by comparing current project statuses to the **Status Snapshot sheet** (see below). It probably makes sense to do this as a per-person daily digest \- i.e. "here are the projects you are on where the status changed in the past 24 hours," to avoid a single person getting many notifications per day.  
   3. Auto-sets project status to Late on the day a project is due  
   4. Checks to see if a project due date in this spreadsheet is different from the date of the calendar event (i.e. if the deadline changed). If the deadline changed, the calendar event date should be shifted, and an appropriate notification should be sent.  
   5. Additionally, check to see who is listed as a responsible person for the project and who else is assigned to it. Compare this list to the live calendar event. If this list has changed since the calendar event was created, make appropriate changes to the calendar event and send out an associated email notification.  
@@ -64,6 +64,20 @@
      - A background script (same one every 10 minutes) processes these requests:
        - For Delete: cancels the event and hides (but does not delete) the row.
        - For Updated: re-syncs the calendar event date/attendees/details and sends notifications.
+
+#### Status Snapshot sheet
+
+- A separate sheet within the Main Projects spreadsheet that tracks project statuses for comparison purposes.  
+- Structure:  
+  * Row 1: Header row with column labels: `project_id`, `project_status`  
+  * Rows 2+: One row per project, storing the `project_id` and `project_status` from the previous day  
+- Purpose:  
+  * Used by the daily maintenance script to detect which projects have changed status since the last run  
+  * The script compares current `project_status` values from the Main Projects File to the snapshot  
+  * After sending status-change digest emails, the snapshot is overwritten with the current statuses  
+- Initialization:  
+  * On first run, if the snapshot is empty or missing projects, the script should populate it with all current projects  
+  * New projects added to the Main Projects File should be added to the snapshot on their first daily run (with their current status)
 
 #### Project Folder
 

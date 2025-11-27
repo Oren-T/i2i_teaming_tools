@@ -2,14 +2,20 @@
 
 * **Main Projects File**  
   * Row 1: user-facing column labels.  
-  * Row 2: internal keys (e.g. `project_id`, `project_name`, `project_status`, `automation_status`, `due_date`, `project_lead_email`, `assignee_emails`, `folder_id`, `calendar_event_id`, `reminder_offsets`, etc.).  
+  * Row 2: internal keys (e.g. `project_id`, `project_name`, `project_status`, `automation_status`, `due_date`, `requested_by`, `assignee`, `folder_id`, `calendar_event_id`, `reminder_offsets`, etc.).  
   * Rows 3+: one project per row.  
 * **Staff Directory**  
   * Columns: `email`, `name`, `role`, `active`, etc.  
   * Used for validating assignee/lead emails and powering dropdowns.  
 * **Status Snapshot sheet**  
-  * One row per project: `project_id`, `project_status` (and any other fields we want to compare daily).  
-  * Overwritten each day after the daily digest runs.  
+  * Structure:  
+    * Row 1: Header row with column labels: `project_id`, `project_status`  
+    * Rows 2+: One row per project, storing `project_id` and `project_status` from the previous day  
+  * Purpose: Tracks previous day's project statuses to detect changes during daily maintenance  
+  * Lifecycle:  
+    * On first run: Populate snapshot with all current projects from Main Projects File  
+    * Daily: Compare current statuses to snapshot, identify changes, send digest emails, then overwrite snapshot with current statuses  
+    * New projects: Added to snapshot on their first daily run (with their current status at that time)  
 * **Reminder Profiles / Offsets sheet**  
   * Stores default reminder offsets and labels (e.g. `3`, `7`, `14` days before).  
   * Used to power dropdown choices and documentation.  
@@ -77,6 +83,7 @@
   * **Process**:  
     * `onFormSubmit` trigger activates when a response is submitted. It should probably be form-bound. 
     * Script reads the raw response, normalizes the data (mapping form questions to project keys), and appends it to the **Main Projects File**.  
+    * Sets `assignee` from the form submitter's email address (automatically captured by Google Forms, then directory sheet can back into the actual value).  
     * Sets `automation_status` to `Ready`.  
     * (Optional) Manually kicks off the batch trigger to process it immediately.
 * **Time-driven batch trigger (every 10 minutes)**  
@@ -91,7 +98,7 @@
       * Create calendar event on district “robo” calendar.  
       * Write `folder_id`, `calendar_event_id`, `project_id` back to row.  
       * Set `automation_status = Created`.  
-      * Send email to responsible people and invite them to the calendar event. We will have a Google Doc email template.  
+      * Send email to responsible people and invite them to the calendar event. Email templates are stored as separate Google Docs (one per template type). First line = subject, remaining lines = body. Script parses by splitting on newlines and performs token substitution.  
   * If Automation Status is set to `Updated`, the 10-minute automation will re-sync the calendar event's date, attendees, and details with the current values in the Main Projects File, send the corresponding update notifications to the project lead and assignees, and then set Automation Status back to `Created`.  
   * If Automation Status is set to `Delete (Notify)` or `Delete (Don't Notify)`, the 10-minute automation will cancel the linked calendar event using the stored `calendar_event_id`, optionally send a cancellation notice to attendees based on the chosen option, hide the project row for archival purposes, and then set Automation Status to `Deleted`.  
   * Note: The `Updated` status handles explicit user-requested changes. The daily calendar sync (below) serves as a safety net to catch any discrepancies that may have been missed.  
@@ -100,9 +107,15 @@
 * **Permissions Management (Manual)**
   * Custom menu item: "Refresh Permissions".  
   * Action: Re-applies sharing settings to the Main Projects File based on the Staff Directory roles. Not strictly enforced by a timer, but available to fix discrepancies.
-* **Staff Directory Sync (On Edit)**
-  * Trigger: `onEdit` or Manual run on the Staff Directory sheet.
-  * Action: Updates the dropdown options in the Google Form (Assignees, Leads) to match the currently active staff in the directory.
+* **Form Dropdown Sync (Manual)**
+  * Custom menu item: "Refresh Form Dropdowns".  
+  * Action: Updates Google Form dropdown options (Category and Assigned to) from Codes and Directory sheets. Available for manual refresh if auto-sync misses updates.
+* **Main Projects File onEdit trigger**
+  * Trigger: `onEdit` on the Main Projects File spreadsheet (handles edits to Main Projects sheet, Staff Directory sheet, and Codes sheet).
+  * Actions:
+    * If `project_status` column edited and new value is "Completed" (and old value was not), set `completed_at` to current timestamp.
+    * If Staff Directory sheet edited, update Google Form dropdown options (Assigned to) to match currently active staff.
+    * If Codes sheet Category column edited, update Google Form dropdown options (Category) to match current categories.
 * **Time-driven daily trigger (e.g. 8am)**  
   * Function: `dailyMaintenance()`.  
   * Responsibilities:  
@@ -110,10 +123,14 @@
        * For each active project, parse `reminder_offsets` (e.g. `"3,7,14"`).  
        * For each offset, compute `due_date - offset`; if equals today, send reminder email to assignees.  
     2. **Status-change digest**:  
-       * Join current project statuses to Status Snapshot by `project_id`.  
-       * For rows where `project_status` changed, group by person (lead \+ assignees).  
-       * Send one email per person summarizing changed projects.  
-       * Overwrite Status Snapshot with latest statuses.  
+       * Read current project statuses from Main Projects File (all rows with `project_id` and `project_status`).  
+       * Read previous statuses from Status Snapshot sheet.  
+       * Join by `project_id` and identify rows where `project_status` differs between current and snapshot.  
+       * For projects with status changes:  
+         * Group by person (project_lead_email + assignee_emails).  
+         * Send one email per person summarizing all projects where status changed.  
+       * After sending all digest emails, overwrite Status Snapshot with current statuses (all active projects).  
+       * Note: If a project exists in Main Projects File but not in snapshot, add it to snapshot. If a project exists in snapshot but not in Main Projects File (deleted/hidden), remove it from snapshot.  
     3. **Late status**:  
        * For projects where due date is today and status is not “Completed”, set `project_status = Late` (or similar).  
     4. **Calendar sync (safety net)**:  
@@ -126,7 +143,8 @@
 
 ### 7\. Calendar/event data
 
-* Use a single “robo” calendar per district for all project events.  
+* Use a single "robo" calendar per district for all project events.  
+* **Implementation**: Script runs as a bot account (e.g., `calendar-bot@yourdomain.com`). Uses `CalendarApp.getDefaultCalendar()` to access the bot's primary calendar. No calendar ID needed in config.  
 * Store `calendar_event_id` in Main Projects File for each project.  
 * Event details:  
   * Title: `[Project ID] Project Name`.  
