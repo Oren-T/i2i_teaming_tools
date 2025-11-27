@@ -107,28 +107,24 @@ class NotificationService {
   }
 
   /**
-   * Converts plain text to basic HTML (preserves line breaks).
-   * @param {string} text - Plain text
+   * Converts text to basic HTML.
+   * TRUSTS the input to contain valid HTML tags.
+   * Only converts newlines to <br> and auto-links URLs.
+   * @param {string} text - Text with potential HTML tags
    * @returns {string} HTML string
    */
   textToHtml(text) {
     if (!text) return '';
 
-    // Escape HTML entities
-    let html = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    // Convert markdown-style bold
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    let html = text;
 
     // Convert line breaks
     html = html.replace(/\n/g, '<br>');
 
-    // Convert URLs to links
+    // Convert URLs to links (if not already linked)
+    // Simple lookahead to avoid double-linking
     html = html.replace(
-      /(https?:\/\/[^\s<]+)/g,
+      /(?<!href=")(https?:\/\/[^\s<]+)/g,
       '<a href="$1">$1</a>'
     );
 
@@ -214,14 +210,14 @@ class NotificationService {
     const subject = `Reminder: ${reminders.length} projects with upcoming deadlines`;
 
     const remindersList = reminders.map(({ project, daysUntilDue }) => {
-      return `• **${project.projectName}** - Due in ${daysUntilDue} days (${formatDate(project.dueDate)})\n` +
-             `  Project ID: ${project.projectId} | View Project Folder: ${project.folderUrl}`;
-    }).join('\n\n');
+      return `• <strong>${project.projectName}</strong> - Due in ${daysUntilDue} days (${formatDate(project.dueDate)})<br>` +
+             `  Project ID: ${project.projectId} | <a href="${project.folderUrl}">View Project Folder</a>`;
+    }).join('<br><br>');
 
-    const body = `Hello ${assigneeName},\n\n` +
-                 `This is a reminder that the following projects are approaching their deadlines:\n\n` +
-                 `${remindersList}\n\n` +
-                 `Please ensure all work is completed and submitted by the deadlines.\n\n` +
+    const body = `Hello ${assigneeName},<br><br>` +
+                 `This is a reminder that the following projects are approaching their deadlines:<br><br>` +
+                 `${remindersList}<br><br>` +
+                 `Please ensure all work is completed and submitted by the deadlines.<br><br>` +
                  `Thank you.`;
 
     this.sendEmail(assigneeEmail, subject, body);
@@ -249,9 +245,9 @@ class NotificationService {
     // Build the status changes list
     const changesList = changes.map(change => {
       const { project, newStatus } = change;
-      return `• **${project.projectName}** - Status changed to: **${newStatus}**\n` +
-             `  Project ID: ${project.projectId} | View Project Folder: ${project.folderUrl}`;
-    }).join('\n\n');
+      return `• <strong>${project.projectName}</strong> - Status changed to: <strong>${newStatus}</strong><br>` +
+             `  Project ID: ${project.projectId} | <a href="${project.folderUrl}">View Project Folder</a>`;
+    }).join('<br><br>');
 
     const tokenValues = {
       RECIPIENT_NAME: recipientName,

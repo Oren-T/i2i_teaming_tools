@@ -10,7 +10,7 @@ let DEBUG = false;
 
 // ===== SHEET NAMES =====
 const SHEET_NAMES = {
-  PROJECTS: 'Projects',
+  PROJECTS: 'Project Management Sheet',
   CONFIG: 'Config',
   DIRECTORY: 'Directory',
   CODES: 'Codes',
@@ -31,13 +31,15 @@ const AUTOMATION_STATUS = {
 };
 
 // ===== PROJECT STATUS VALUES =====
+// Core statuses required for system logic (e.g. completion tracking, late detection).
+// Other statuses are flexible and read from the Codes sheet.
 const PROJECT_STATUS = {
-  NOT_STARTED: 'Not started',
-  BEHIND_SCHEDULE: 'Behind schedule',
+  PROJECT_ASSIGNED: 'Project Assigned',
+  ON_TRACK: 'On Track',
+  BEHIND_SCHEDULE: 'Behind Schedule',
   STUCK: 'Stuck',
-  ON_TRACK: 'On track',
-  COMPLETED: 'Completed',
-  LATE: 'Late'
+  LATE: 'Late',
+  COMPLETE: 'Complete'
 };
 
 // ===== REQUIRED CONFIG KEYS =====
@@ -83,6 +85,7 @@ const REQUIRED_PROJECT_COLUMNS = [
   'automation_status',
   'calendar_event_id',
   'folder_id',
+  'file_id',
   'notes'
 ];
 
@@ -99,6 +102,15 @@ const CODES_COLUMNS = {
   STATUS: 'Status',
   REMINDER_DAYS_OFFSET: 'Reminder Days Offset',
   REMINDER_DAYS_READABLE: 'Reminder Days: Readable'
+};
+
+// ===== CODES SHEET LAYOUT =====
+const CODES_LAYOUT = {
+  HEADER_ROW: 3,
+  CATEGORY_COL: 1,          // Column A
+  STATUS_COL: 3,            // Column C
+  REMINDER_OFFSET_COL: 5,   // Column E
+  REMINDER_LABEL_COL: 6     // Column F
 };
 
 // ===== EMAIL TEMPLATE TOKENS =====

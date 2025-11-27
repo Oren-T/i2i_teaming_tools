@@ -188,7 +188,7 @@ class Project {
   }
 
   /**
-   * @returns {string} Project status (e.g., "On track", "Completed")
+   * @returns {string} Project status (e.g., "On track", "Complete")
    */
   get projectStatus() {
     return String(this.get('project_status') || '').trim();
@@ -277,6 +277,17 @@ class Project {
     this.set('folder_id', value);
   }
 
+  /**
+   * @returns {string} File ID (the copied project spreadsheet)
+   */
+  get fileId() {
+    return String(this.get('file_id') || '').trim();
+  }
+
+  set fileId(value) {
+    this.set('file_id', value);
+  }
+
   // ===== COMPUTED PROPERTIES =====
 
   /**
@@ -360,10 +371,10 @@ class Project {
   }
 
   /**
-   * @returns {boolean} True if project status is Completed
+   * @returns {boolean} True if project status is Complete
    */
   get isComplete() {
-    return this.projectStatus === PROJECT_STATUS.COMPLETED;
+    return this.projectStatus === PROJECT_STATUS.COMPLETE;
   }
 
   /**

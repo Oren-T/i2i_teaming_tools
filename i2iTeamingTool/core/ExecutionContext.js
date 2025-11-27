@@ -14,16 +14,22 @@ class ExecutionContext {
     this.spreadsheetId = spreadsheetId;
 
     // Open the spreadsheet
-    this.ss = SpreadsheetApp.openById(spreadsheetId);
+    this.sSht = SpreadsheetApp.openById(spreadsheetId);
 
     // Consistent timestamp for entire run
     this.now = new Date();
+    const startTime = this.now.getTime();
 
     // Initialize data layer
     this.initDataLayer();
+    const dataLayerTime = new Date().getTime();
+    DEBUG && console.log(`ExecutionContext: Data layer init took ${dataLayerTime - startTime}ms`);
 
     // Initialize services (after data layer is ready)
     this.initServices();
+    const servicesTime = new Date().getTime();
+    DEBUG && console.log(`ExecutionContext: Services init took ${servicesTime - dataLayerTime}ms`);
+    DEBUG && console.log(`ExecutionContext: Total init took ${servicesTime - startTime}ms`);
 
     DEBUG && console.log('ExecutionContext: Initialization complete');
   }
@@ -33,7 +39,7 @@ class ExecutionContext {
    */
   initDataLayer() {
     // Config - wraps the Config sheet
-    const configSheet = this.ss.getSheetByName(SHEET_NAMES.CONFIG);
+    const configSheet = this.sSht.getSheetByName(SHEET_NAMES.CONFIG);
     if (!configSheet) {
       throw new Error(`Sheet "${SHEET_NAMES.CONFIG}" not found`);
     }
@@ -46,7 +52,7 @@ class ExecutionContext {
     this.idAllocator = new IdAllocator(this.config);
 
     // ProjectSheet - wraps the Projects sheet
-    const projectsSheet = this.ss.getSheetByName(SHEET_NAMES.PROJECTS);
+    const projectsSheet = this.sSht.getSheetByName(SHEET_NAMES.PROJECTS);
     if (!projectsSheet) {
       throw new Error(`Sheet "${SHEET_NAMES.PROJECTS}" not found`);
     }
@@ -54,7 +60,7 @@ class ExecutionContext {
     this.projectSheet.loadData();
 
     // SnapshotSheet - wraps the Status Snapshot sheet
-    const snapshotSheet = this.ss.getSheetByName(SHEET_NAMES.STATUS_SNAPSHOT);
+    const snapshotSheet = this.sSht.getSheetByName(SHEET_NAMES.STATUS_SNAPSHOT);
     if (!snapshotSheet) {
       throw new Error(`Sheet "${SHEET_NAMES.STATUS_SNAPSHOT}" not found`);
     }
@@ -62,14 +68,14 @@ class ExecutionContext {
     this.snapshotSheet.ensureHeaders();
 
     // Directory - wraps the Directory sheet
-    const directorySheet = this.ss.getSheetByName(SHEET_NAMES.DIRECTORY);
+    const directorySheet = this.sSht.getSheetByName(SHEET_NAMES.DIRECTORY);
     if (!directorySheet) {
       throw new Error(`Sheet "${SHEET_NAMES.DIRECTORY}" not found`);
     }
     this.directory = new Directory(directorySheet);
 
     // Codes - wraps the Codes sheet
-    const codesSheet = this.ss.getSheetByName(SHEET_NAMES.CODES);
+    const codesSheet = this.sSht.getSheetByName(SHEET_NAMES.CODES);
     if (!codesSheet) {
       throw new Error(`Sheet "${SHEET_NAMES.CODES}" not found`);
     }
@@ -108,7 +114,7 @@ class ExecutionContext {
    * @returns {GoogleAppsScript.Spreadsheet.Spreadsheet} The spreadsheet
    */
   getSpreadsheet() {
-    return this.ss;
+    return this.sSht;
   }
 
   /**
@@ -123,10 +129,12 @@ class ExecutionContext {
 
   /**
    * Runs validation on the context.
+   * @param {Object} [options] - Validation options
+   * @param {boolean} [options.includeFileAccess=false] - Include external file checks
    * @throws {Error} If validation fails
    */
-  validate() {
-    this.validator.validate();
+  validate(options = {}) {
+    this.validator.validate(options);
   }
 
   /**

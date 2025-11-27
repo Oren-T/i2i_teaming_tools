@@ -259,7 +259,7 @@ function parseDate(value) {
  */
 function formatProjectTitle(projectId, projectName) {
   if (projectId && projectName) {
-    return `[${projectId}] ${projectName}`;
+    return `${projectName} [${projectId}]`;
   }
   return projectName || projectId || '';
 }

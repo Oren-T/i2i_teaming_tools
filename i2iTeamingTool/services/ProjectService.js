@@ -31,7 +31,7 @@ class ProjectService {
         this.processReadyProject(project);
       } catch (error) {
         console.error(`ProjectService: Error processing project at row ${project.getRowIndex()}: ${error.message}`);
-        project.automationStatus = AUTOMATION_STATUS.ERROR;
+        this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
         // Send error notification
         this.notificationService.sendErrorNotification(
@@ -51,19 +51,27 @@ class ProjectService {
   processReadyProject(project) {
     DEBUG && console.log(`ProjectService: Processing ready project at row ${project.getRowIndex()}`);
 
-    // Check if project already has an ID (should not happen for Ready status)
-    if (project.hasProjectId) {
-      const errorMsg = `Project at row ${project.getRowIndex()} already has ID (${project.projectId}) but status is Ready. ` +
-                       `This may indicate a duplicate processing attempt or manual error.`;
-      console.error(`ProjectService: ${errorMsg}`);
-      project.automationStatus = AUTOMATION_STATUS.ERROR;
+    // Check if project already has an ID.
+    // If so, treat this as a resume/retry operation rather than a new creation.
+    let projectId = project.projectId;
+    const isResume = project.hasProjectId;
+    
+    // Track what already existed to determine if this is a "full retry" (everything done)
+    const initialState = {
+      hasProjectId: project.hasProjectId,
+      hasFolderId: !!project.folderId,
+      hasFileId: !!project.fileId,
+      hasEventId: !!project.calendarEventId
+    };
 
-      // Send error notification to admins
-      this.notificationService.sendErrorNotification(
-        'Project Already Has ID',
-        errorMsg
-      );
-      return;
+    if (isResume) {
+      console.log(`ProjectService: Resuming processing for existing project ${projectId}`);
+    } else {
+      // Generate new project ID
+      projectId = this.idAllocator.next();
+      project.projectId = projectId;
+      project.createdAt = new Date();
+      project.schoolYear = this.config.schoolYear;
     }
 
     // Check if project has a due date (required for calendar event)
@@ -71,7 +79,7 @@ class ProjectService {
       const errorMsg = `Project at row ${project.getRowIndex()} is missing a due date. ` +
                        `A deadline is required to create the calendar event.`;
       console.error(`ProjectService: ${errorMsg}`);
-      project.automationStatus = AUTOMATION_STATUS.ERROR;
+      this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
       this.notificationService.sendErrorNotification(
         'Project Missing Due Date',
@@ -80,32 +88,59 @@ class ProjectService {
       return;
     }
 
-    // Generate project ID
-    const projectId = this.idAllocator.next();
-    project.projectId = projectId;
+    // Create project folder (idempotent check)
+    let folderId = project.folderId;
+    if (folderId) {
+      DEBUG && console.log(`ProjectService: Folder already exists (${folderId}), skipping creation`);
+    } else {
+      folderId = this.createProjectFolder(project);
+      project.folderId = folderId;
+    }
 
-    // Set created timestamp and school year
-    project.createdAt = new Date();
-    project.schoolYear = this.config.schoolYear;
+    // Copy template(s) into folder (idempotent check)
+    let fileId = project.fileId;
+    if (fileId) {
+      DEBUG && console.log(`ProjectService: Project file already exists (${fileId}), skipping creation`);
+      // Optionally update the existing file to ensure it's in sync
+      this.updateProjectFile(project);
+    } else {
+      this.copyTemplateToFolder(project, folderId);
+    }
 
-    // Create project folder
-    const folderId = this.createProjectFolder(project);
-    project.folderId = folderId;
+    // Create calendar event (idempotent check)
+    let eventId = project.calendarEventId;
+    if (eventId) {
+      DEBUG && console.log(`ProjectService: Calendar event already exists (${eventId}), skipping creation`);
+      // Optionally update the existing event
+      this.updateCalendarEvent(project);
+    } else {
+      eventId = this.createCalendarEvent(project);
+      project.calendarEventId = eventId;
+    }
 
-    // Copy template(s) into folder
-    this.copyTemplateToFolder(project, folderId);
-
-    // Create calendar event
-    const eventId = this.createCalendarEvent(project);
-    project.calendarEventId = eventId;
+    // Ensure project status is set (for manually added rows)
+    if (!project.projectStatus) {
+      project.projectStatus = PROJECT_STATUS.PROJECT_ASSIGNED;
+    }
 
     // Update automation status
-    project.automationStatus = AUTOMATION_STATUS.CREATED;
+    this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
 
-    DEBUG && console.log(`ProjectService: Created project ${projectId} with folder ${folderId} and event ${eventId}`);
+    DEBUG && console.log(`ProjectService: Created/Resumed project ${projectId} with folder ${folderId} and event ${eventId}`);
 
-    // Send notification email
-    this.notificationService.sendNewProjectEmail(project);
+    // Determine notification logic
+    // If everything already existed, we treat this as a silent success (no email).
+    // Otherwise, we assume something was missing/failed previously, so we send the "New Project" email.
+    const isFullRetry = initialState.hasProjectId && 
+                        initialState.hasFolderId && 
+                        initialState.hasFileId && 
+                        initialState.hasEventId;
+
+    if (isFullRetry) {
+      console.log('ProjectService: All artifacts already existed. Skipping "New Project" email (silent success).');
+    } else {
+      this.notificationService.sendNewProjectEmail(project);
+    }
   }
 
   /**
@@ -121,7 +156,7 @@ class ProjectService {
         this.processUpdatedProject(project);
       } catch (error) {
         console.error(`ProjectService: Error processing update for ${project.projectId}: ${error.message}`);
-        project.automationStatus = AUTOMATION_STATUS.ERROR;
+        this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
         this.notificationService.sendErrorNotification(
           'Project Update Failed',
@@ -142,8 +177,11 @@ class ProjectService {
     // Update calendar event
     this.updateCalendarEvent(project);
 
+    // Update project file (Overview tab)
+    this.updateProjectFile(project);
+
     // Set status back to Created
-    project.automationStatus = AUTOMATION_STATUS.CREATED;
+    this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
 
     // Send update notification
     this.notificationService.sendUpdateNotification(project);
@@ -162,7 +200,7 @@ class ProjectService {
         this.processDeleteRequest(project);
       } catch (error) {
         console.error(`ProjectService: Error processing delete for ${project.projectId}: ${error.message}`);
-        project.automationStatus = AUTOMATION_STATUS.ERROR;
+        this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
         this.notificationService.sendErrorNotification(
           'Project Deletion Failed',
@@ -191,11 +229,32 @@ class ProjectService {
     }
 
     // Update status
-    project.automationStatus = AUTOMATION_STATUS.DELETED;
+    this.setAutomationStatus(project, AUTOMATION_STATUS.DELETED);
 
     // Hide the row (after flush)
     // Note: We'll hide after flush in the main processing loop
     project._pendingHide = true;
+  }
+
+  /**
+   * Sets automation status and refreshes validation for the project row.
+   * @param {Project} project - The project being updated
+   * @param {string} status - The automation status to apply
+   */
+  setAutomationStatus(project, status) {
+    project.automationStatus = status;
+    this.updateAutomationValidation(project);
+  }
+
+  /**
+   * Refreshes automation_status validation for a single project row.
+   * @param {Project} project - The project whose row should be updated
+   */
+  updateAutomationValidation(project) {
+    const validationService = this.ctx && this.ctx.validationService;
+    if (validationService && typeof validationService.updateDropdownValidation === 'function') {
+      validationService.updateDropdownValidation(project);
+    }
   }
 
   // ===== FOLDER & TEMPLATE METHODS =====
@@ -241,58 +300,78 @@ class ProjectService {
     // Create copy with project name
     const copyName = `${project.projectName} - Project File`;
     const copiedFile = withBackoff(() => templateFile.makeCopy(copyName, folder));
+    const fileId = copiedFile.getId();
+    
+    // Save file ID to project record
+    project.fileId = fileId;
 
-    DEBUG && console.log(`ProjectService: Copied template to "${copyName}"`);
+    DEBUG && console.log(`ProjectService: Copied template to "${copyName}" (ID: ${fileId})`);
 
     // Perform token substitution in the copied spreadsheet
-    this.substituteTemplateTokens(copiedFile.getId(), project);
+    this.updateProjectFile(project);
   }
 
   /**
-   * Substitutes tokens in the template file's Overview tab.
-   * @param {string} fileId - The copied template file ID
-   * @param {Project} project - The project with values to substitute
+   * Updates the project file's Overview tab with current project details.
+   * Can be called during creation or update.
+   * @param {Project} project - The project with values to sync
    */
-  substituteTemplateTokens(fileId, project) {
-    try {
-      const ss = withBackoff(() => SpreadsheetApp.openById(fileId));
-      const overviewSheet = ss.getSheetByName('Overview');
-
-      if (!overviewSheet) {
-        DEBUG && console.log('ProjectService: No Overview sheet in template, skipping substitution');
-        return;
-      }
-
-      // Map of row labels to project values
-      const valueMap = {
-        'School Year': project.schoolYear,
-        'Goal #': project.goalNumber,
-        'Action #': project.actionNumber,
-        'Category (default is LCAP)': project.category,
-        'Title': project.projectName,
-        'Description': project.description,
-        'Assigned to': project.assignee,
-        'Requested by': project.requestedBy,
-        'Deadline': project.dueDate ? formatDate(project.dueDate) : ''
-      };
-
-      // Read column A to find labels
-      const labelRange = overviewSheet.getRange('A2:A10');
-      const labels = labelRange.getValues();
-
-      for (let i = 0; i < labels.length; i++) {
-        const label = String(labels[i][0]).trim();
-        if (valueMap[label] !== undefined) {
-          const row = i + 2; // Row 2 is index 0
-          overviewSheet.getRange(row, 2).setValue(valueMap[label]);
-        }
-      }
-
-      DEBUG && console.log('ProjectService: Substituted tokens in template Overview tab');
-
-    } catch (error) {
-      console.warn(`ProjectService: Could not substitute template tokens: ${error.message}`);
+  updateProjectFile(project) {
+    const fileId = project.fileId;
+    if (!fileId) {
+      DEBUG && console.log('ProjectService: No file ID found for project, skipping file update');
+      return;
     }
+
+    try {
+      // Open the specific project file
+      const sSht = withBackoff(() => SpreadsheetApp.openById(fileId));
+      this.writeProjectDetailsToSheet(sSht, project);
+    } catch (error) {
+      console.warn(`ProjectService: Could not update project file ${fileId}: ${error.message}`);
+      // Don't throw, just log - we don't want to fail the whole process if the file is missing/locked
+    }
+  }
+
+  /**
+   * Writes project details to the Overview tab of a spreadsheet.
+   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} sSht - The target spreadsheet
+   * @param {Project} project - The project data source
+   */
+  writeProjectDetailsToSheet(sSht, project) {
+    const overviewSheet = sSht.getSheetByName('Overview');
+
+    if (!overviewSheet) {
+      DEBUG && console.log('ProjectService: No Overview sheet in project file, skipping update');
+      return;
+    }
+
+    // Map of row labels to project values
+    const valueMap = {
+      'School Year': project.schoolYear,
+      'Goal #': project.goalNumber,
+      'Action #': project.actionNumber,
+      'Category (default is LCAP)': project.category,
+      'Title': project.projectName,
+      'Description': project.description,
+      'Assigned to': project.assignee,
+      'Requested by': project.requestedBy,
+      'Deadline': project.dueDate ? formatDate(project.dueDate) : ''
+    };
+
+    // Read column A to find labels
+    const labelRange = overviewSheet.getRange('A2:A10');
+    const labels = labelRange.getValues();
+
+    for (let i = 0; i < labels.length; i++) {
+      const label = String(labels[i][0]).trim();
+      if (valueMap[label] !== undefined) {
+        const row = i + 2; // Row 2 is index 0
+        overviewSheet.getRange(row, 2).setValue(valueMap[label]);
+      }
+    }
+
+    DEBUG && console.log('ProjectService: Updated project details in Overview tab');
   }
 
   // ===== CALENDAR METHODS =====
@@ -481,11 +560,17 @@ class ProjectService {
       DEBUG && console.log(`ProjectService: Set default reminder offsets: ${projectData.reminder_offsets}`);
     }
 
+    // Set initial project status
+    projectData.project_status = PROJECT_STATUS.PROJECT_ASSIGNED;
+
     // Set automation status to Ready
     projectData.automation_status = AUTOMATION_STATUS.READY;
 
     // Append the row
     const project = this.projectSheet.appendRow(projectData);
+
+    // Ensure validation matches the initialized Ready status
+    this.updateAutomationValidation(project);
 
     DEBUG && console.log(`ProjectService: Appended form response as row ${project.getRowIndex()}`);
 
@@ -500,7 +585,7 @@ class ProjectService {
    * @returns {string|null} The submitter email or null if not found
    */
   extractSubmitterEmail(namedValues, values) {
-    // Approach B: Try namedValues['Email Address'] (Google's standard key when collecting emails)
+    // Approach 1: Try namedValues['Email Address'] (Google's standard key when collecting emails)
     const emailKeys = ['Email Address', 'Email address', 'email address', 'Email'];
     for (const key of emailKeys) {
       if (namedValues[key] && namedValues[key].length > 0) {
@@ -512,7 +597,7 @@ class ProjectService {
       }
     }
 
-    // Approach A: Fallback to values[1] (standard position when form collects emails)
+    // Approach 2: Fallback to values[1] (standard position when form collects emails)
     // values[0] = timestamp, values[1] = email (when "Collect email addresses" is enabled)
     if (values.length > 1 && values[1]) {
       const email = String(values[1]).trim();

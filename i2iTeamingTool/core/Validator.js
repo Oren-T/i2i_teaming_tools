@@ -15,15 +15,21 @@ class Validator {
   }
 
   /**
-   * Runs all validations and throws if any errors found.
+   * Runs validations and throws if any errors found.
+   * @param {Object} [options] - Validation options
+   * @param {boolean} [options.includeFileAccess=false] - Whether to include external file checks
    * @throws {Error} Aggregated error message if validation fails
    */
-  validate() {
+  validate(options = {}) {
+    const { includeFileAccess = false } = options;
     this.errors = [];
 
     this.validateConfigKeys();
     this.validateProjectColumns();
-    this.validateFileAccess();
+
+    if (includeFileAccess) {
+      this.validateFileAccess();
+    }
 
     if (this.errors.length > 0) {
       const errorMessage = `Validation failed with ${this.errors.length} error(s):\n` +

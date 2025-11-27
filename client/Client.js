@@ -30,7 +30,7 @@ function onOpen(e) {
  * Handles the onEdit event.
  * @param {Object} e - The event object
  */
-function onEdit(e) {
+function whenEdited(e) {
   i2iTT.handleEdit(SPREADSHEET_ID, e);
 }
 
@@ -149,7 +149,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   for (const trigger of existingTriggers) {
     const handlerFunction = trigger.getHandlerFunction();
-    if (['onBatchTrigger', 'onDailyTrigger', 'onFormSubmit'].includes(handlerFunction)) {
+    if (['onBatchTrigger', 'onDailyTrigger', 'onFormSubmit', 'whenEdited'].includes(handlerFunction)) {
       ScriptApp.deleteTrigger(trigger);
     }
   }
@@ -164,6 +164,7 @@ function setupTriggers() {
   ScriptApp.newTrigger('onDailyTrigger')
     .timeBased()
     .atHour(8)
+    .nearMinute(0)
     .everyDays(1)
     .create();
 
@@ -173,10 +174,17 @@ function setupTriggers() {
     .onFormSubmit()
     .create();
 
+  // Create installable edit trigger
+  ScriptApp.newTrigger('whenEdited')
+    .forSpreadsheet(SPREADSHEET_ID)
+    .onEdit()
+    .create();
+
   ui.alert('Success', 'Triggers have been set up:\n\n' +
     '• 10-minute batch processing\n' +
     '• Daily 8am maintenance\n' +
-    '• Form submission handler', ui.ButtonSet.OK);
+    '• Form submission handler\n' +
+    '• Installable edit handler', ui.ButtonSet.OK);
 }
 
 /**

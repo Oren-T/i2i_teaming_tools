@@ -179,37 +179,85 @@ class ValidationService {
   }
 
   /**
+   * Initializes dropdown data validation for the project_status column.
+   * Merges hardcoded core statuses with dynamic options from the Codes sheet.
+   */
+  initializeProjectStatusValidation() {
+    DEBUG && console.log('ValidationService: Initializing project_status validation');
+
+    const sheet = this.projectSheet.getSheet();
+    const statusColIndex = this.projectSheet.getColumnIndex('project_status');
+
+    if (statusColIndex === undefined) {
+      console.warn('ValidationService: project_status column not found');
+      return;
+    }
+
+    // Get statuses from Codes sheet
+    const dynamicStatuses = this.ctx.codes.getStatuses();
+    
+    // Core statuses that must always be present
+    const coreStatuses = Object.values(PROJECT_STATUS);
+
+    // Merge and deduplicate
+    const allStatuses = [...new Set([...coreStatuses, ...dynamicStatuses])];
+
+    if (allStatuses.length === 0) {
+      console.warn('ValidationService: No project statuses available');
+      return;
+    }
+
+    const statusCol = statusColIndex + 1;
+    const lastRow = Math.max(sheet.getLastRow(), 3);
+
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(allStatuses, true)
+      .setAllowInvalid(true) // Allow other values just in case
+      .setHelpText('Select project status.')
+      .build();
+
+    // Apply to all data rows
+    const dataRange = sheet.getRange(3, statusCol, lastRow - 2, 1);
+    dataRange.setDataValidation(rule);
+
+    DEBUG && console.log(`ValidationService: Set project_status validation with ${allStatuses.length} options`);
+  }
+
+  /**
    * Sets up initial data validation for the automation_status column.
    * Creates a default validation rule for all data rows.
    */
   initializeColumnValidation() {
     DEBUG && console.log('ValidationService: Initializing column validation');
 
+    // Initialize automation_status validation (existing logic)
     const sheet = this.projectSheet.getSheet();
     const statusColIndex = this.projectSheet.getColumnIndex('automation_status');
 
-    if (statusColIndex === undefined) {
+    if (statusColIndex !== undefined) {
+      const statusCol = statusColIndex + 1;
+      const lastRow = Math.max(sheet.getLastRow(), 3); // At least row 3
+
+      // Default validation for new/blank rows
+      const defaultValues = [AUTOMATION_STATUS.READY];
+      const defaultRule = SpreadsheetApp.newDataValidation()
+        .requireValueInList(defaultValues, true)
+        .setAllowInvalid(false)
+        .setHelpText('Set to "Ready" when the row is complete and ready for processing.')
+        .build();
+
+      // Apply to all data rows (starting at row 3)
+      const dataRange = sheet.getRange(3, statusCol, lastRow - 2, 1);
+      dataRange.setDataValidation(defaultRule);
+
+      // Then update individual rows based on their current status
+      this.updateAllDropdownValidations();
+    } else {
       console.warn('ValidationService: automation_status column not found');
-      return;
     }
 
-    const statusCol = statusColIndex + 1;
-    const lastRow = Math.max(sheet.getLastRow(), 3); // At least row 3
-
-    // Default validation for new/blank rows
-    const defaultValues = [AUTOMATION_STATUS.READY];
-    const defaultRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(defaultValues, true)
-      .setAllowInvalid(false)
-      .setHelpText('Set to "Ready" when the row is complete and ready for processing.')
-      .build();
-
-    // Apply to all data rows (starting at row 3)
-    const dataRange = sheet.getRange(3, statusCol, lastRow - 2, 1);
-    dataRange.setDataValidation(defaultRule);
-
-    // Then update individual rows based on their current status
-    this.updateAllDropdownValidations();
+    // Initialize project_status validation (new logic)
+    this.initializeProjectStatusValidation();
 
     DEBUG && console.log('ValidationService: Column validation initialized');
   }

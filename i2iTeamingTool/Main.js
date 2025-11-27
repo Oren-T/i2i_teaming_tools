@@ -22,6 +22,7 @@ function processNewProjects(spreadsheetId) {
 
   // Acquire script lock to prevent overlapping runs
   const lock = LockService.getScriptLock();
+  // Wait up to 30 seconds for the lock
   const acquired = lock.tryLock(30000);
 
   if (!acquired) {
@@ -45,9 +46,6 @@ function processNewProjects(spreadsheetId) {
     // Flush all changes to the sheet
     ctx.flush();
 
-    // Update dropdown validations to reflect new statuses
-    ctx.validationService.updateAllDropdownValidations();
-
     console.log('=== processNewProjects completed ===');
 
   } catch (error) {
@@ -68,6 +66,16 @@ function processNewProjects(spreadsheetId) {
 function runDailyMaintenance(spreadsheetId) {
   console.log('=== runDailyMaintenance starting ===');
 
+  // Acquire script lock to prevent overlapping runs (e.g. manual + trigger)
+  const lock = LockService.getScriptLock();
+  // Wait up to 30 seconds for the lock
+  const acquired = lock.tryLock(30000);
+
+  if (!acquired) {
+    console.log('runDailyMaintenance: Could not acquire lock, another instance may be running');
+    return;
+  }
+
   try {
     const ctx = new ExecutionContext(spreadsheetId);
     ctx.validate();
@@ -83,6 +91,8 @@ function runDailyMaintenance(spreadsheetId) {
   } catch (error) {
     console.error(`runDailyMaintenance error: ${error.message}`);
     throw error;
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -123,11 +133,27 @@ function handleFormSubmission(spreadsheetId, event) {
 
   // Acquire script lock
   const lock = LockService.getScriptLock();
-  const acquired = lock.tryLock(30000);
+  // Wait up to 5 minutes (300,000 ms) for the lock
+  const acquired = lock.tryLock(300000);
 
   if (!acquired) {
-    console.log('handleFormSubmission: Could not acquire lock');
-    return;
+    const errorMsg = 'handleFormSubmission: Could not acquire lock after 5 minutes. Submission processing FAILED.';
+    console.error(errorMsg);
+
+    // Attempt to send error email notification
+    try {
+      // Create lightweight context just for notification service
+      // We wrap this in try-catch because if obtaining lock failed,
+      // initializing full context might also be risky if it depends on locked resources,
+      // though typically reading config/directory is safe.
+      const ctx = new ExecutionContext(spreadsheetId);
+      ctx.notificationService.sendErrorNotification('Form Submission Lock Timeout', errorMsg);
+    } catch (notifyError) {
+      console.error(`Failed to send lock timeout notification: ${notifyError.message}`);
+    }
+
+    // Throw error so the trigger is marked as failed in Apps Script dashboard
+    throw new Error(errorMsg);
   }
 
   try {
@@ -142,9 +168,6 @@ function handleFormSubmission(spreadsheetId, event) {
 
     // Flush all changes
     ctx.flush();
-
-    // Update dropdown validations
-    ctx.validationService.updateAllDropdownValidations();
 
     console.log('=== handleFormSubmission completed ===');
 
@@ -201,7 +224,7 @@ function handleEdit(spreadsheetId, event) {
 
 /**
  * Handles edit events specifically for the Projects sheet.
- * Sets completed_at timestamp when project_status changes to "Completed".
+ * Sets completed_at timestamp when project_status changes to "Complete".
  *
  * @param {ExecutionContext} ctx - The execution context
  * @param {Object} event - The edit event object
@@ -232,8 +255,8 @@ function handleProjectsEdit(ctx, event) {
 
     DEBUG && console.log(`handleProjectsEdit: Status changed from "${oldValue}" to "${newValue}"`);
 
-    // If status changed to Completed (and wasn't already)
-    if (newValue === PROJECT_STATUS.COMPLETED && oldValue !== PROJECT_STATUS.COMPLETED) {
+    // If status changed to Complete (and wasn't already)
+    if (newValue === PROJECT_STATUS.COMPLETE && oldValue !== PROJECT_STATUS.COMPLETE) {
       const completedAtColIndex = ctx.projectSheet.getColumnIndex('completed_at');
       if (completedAtColIndex !== undefined) {
         sheet.getRange(row, completedAtColIndex + 1).setValue(new Date());
@@ -373,9 +396,9 @@ function refreshPermissions(spreadsheetId) {
  * Creates the custom menu in the spreadsheet UI.
  * Called by the onOpen trigger.
  *
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - The spreadsheet (optional, uses active if not provided)
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} sSht - The spreadsheet (optional, uses active if not provided)
  */
-function createMenu(ss) {
+function createMenu(sSht) {
   const ui = SpreadsheetApp.getUi();
 
   ui.createMenu('Teaming Tool')
@@ -411,7 +434,7 @@ function getStatusSummary(spreadsheetId) {
 function validateConfiguration(spreadsheetId) {
   try {
     const ctx = new ExecutionContext(spreadsheetId);
-    ctx.validate();
+    ctx.validate({ includeFileAccess: true });
     return { valid: true, errors: [] };
   } catch (error) {
     return { valid: false, errors: [error.message] };
