@@ -31,6 +31,7 @@
 | Email Template - Status Change | | Google Doc ID for status change digest email template |
 | Email Template - Project Update | | Google Doc ID for project update notification email template |
 | Email Template - Project Cancellation | | Google Doc ID for project cancellation notification email template |
+| Debug Mode | false | (Optional) Set to "true" to enable verbose logging for troubleshooting |
 
 ---
 
