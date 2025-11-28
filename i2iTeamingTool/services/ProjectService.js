@@ -107,6 +107,9 @@ class ProjectService {
       this.copyTemplateToFolder(project, folderId);
     }
 
+    // Share folder with assignees and requester (idempotent - addEditor is safe to re-run)
+    this.shareProjectFolder(project, folderId);
+
     // Create calendar event (idempotent check)
     let eventId = project.calendarEventId;
     if (eventId) {
@@ -179,6 +182,9 @@ class ProjectService {
 
     // Update project file (Overview tab)
     this.updateProjectFile(project);
+
+    // Re-sync folder sharing (handles assignee changes - idempotent)
+    this.shareProjectFolder(project, project.folderId);
 
     // Set status back to Created
     this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
@@ -309,6 +315,97 @@ class ProjectService {
 
     // Perform token substitution in the copied spreadsheet
     this.updateProjectFile(project);
+  }
+
+  /**
+   * Shares the project folder with assignees and requester.
+   * Uses Advanced Drive Service to suppress Google's default share notification emails.
+   * @param {Project} project - The project
+   * @param {string} folderId - The folder ID to share
+   */
+  shareProjectFolder(project, folderId) {
+    if (!folderId) {
+      DEBUG && console.log('ProjectService: No folder ID provided, skipping sharing');
+      return;
+    }
+
+    const emailsToShare = new Set();
+    const sharingErrors = [];
+
+    // Collect assignee emails
+    for (const assignee of project.assignees) {
+      const email = this.directory.resolveToEmail(assignee);
+      if (email) {
+        if (isValidEmail(email)) {
+          emailsToShare.add(email.toLowerCase());
+        } else {
+          const errorMsg = `Invalid email format for assignee "${assignee}": ${email}`;
+          console.warn(`ProjectService: ${errorMsg}`);
+          sharingErrors.push(errorMsg);
+        }
+      } else {
+        const errorMsg = `Assignee "${assignee}" not found in Directory`;
+        console.warn(`ProjectService: ${errorMsg}`);
+        sharingErrors.push(errorMsg);
+      }
+    }
+
+    // Collect requester email
+    if (project.requestedBy) {
+      const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
+      if (requesterEmail) {
+        if (isValidEmail(requesterEmail)) {
+          emailsToShare.add(requesterEmail.toLowerCase());
+        } else {
+          const errorMsg = `Invalid email format for requester "${project.requestedBy}": ${requesterEmail}`;
+          console.warn(`ProjectService: ${errorMsg}`);
+          sharingErrors.push(errorMsg);
+        }
+      } else {
+        const errorMsg = `Requester "${project.requestedBy}" not found in Directory`;
+        console.warn(`ProjectService: ${errorMsg}`);
+        sharingErrors.push(errorMsg);
+      }
+    }
+
+    // Share with each person using Advanced Drive Service (suppresses notification emails)
+    for (const email of emailsToShare) {
+      try {
+        withBackoff(() => {
+          Drive.Permissions.insert(
+            {
+              role: 'writer',
+              type: 'user',
+              value: email
+            },
+            folderId,
+            {
+              sendNotificationEmails: false
+            }
+          );
+        });
+        DEBUG && console.log(`ProjectService: Shared folder with ${email}`);
+      } catch (e) {
+        // Check if error is "already has access" - this is not a real error
+        if (e.message && e.message.includes('already has access')) {
+          DEBUG && console.log(`ProjectService: ${email} already has access to folder`);
+        } else {
+          const errorMsg = `Could not share folder with ${email}: ${e.message}`;
+          console.warn(`ProjectService: ${errorMsg}`);
+          sharingErrors.push(errorMsg);
+        }
+      }
+    }
+
+    // Send error notification if there were sharing problems
+    if (sharingErrors.length > 0) {
+      this.notificationService.sendErrorNotification(
+        'Project Folder Sharing Issues',
+        `Some issues occurred while sharing folder for project ${project.projectId} (${project.projectName}):\n\n` +
+        sharingErrors.map(err => `• ${err}`).join('\n') +
+        `\n\nThe project was still created, but manual sharing may be needed.`
+      );
+    }
   }
 
   /**
