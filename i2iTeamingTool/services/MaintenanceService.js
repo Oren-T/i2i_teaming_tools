@@ -278,11 +278,16 @@ class MaintenanceService {
       }
 
       // Check attendees
+      // Note: Calendar owner (organizer) doesn't appear in getGuestList(), so exclude from comparison
+      const calendarOwner = calendar.getId().toLowerCase();
       const eventGuests = event.getGuestList().map(g => g.getEmail().toLowerCase()).sort();
-      const projectGuests = project.getAllRecipientEmails(this.directory).map(e => e.toLowerCase()).sort();
+      const projectGuests = project.getAllRecipientEmails(this.directory)
+        .map(e => e.toLowerCase())
+        .filter(e => e !== calendarOwner)
+        .sort();
 
       if (JSON.stringify(eventGuests) !== JSON.stringify(projectGuests)) {
-        DEBUG && console.log(`MaintenanceService: Attendee mismatch for ${project.projectId}`);
+        DEBUG && console.log(`MaintenanceService: Attendee mismatch for ${project.projectId} - Event: [${eventGuests.join(', ')}], Project: [${projectGuests.join(', ')}]`);
         return true;
       }
 
@@ -315,8 +320,11 @@ class MaintenanceService {
       event.setTitle(project.displayTitle);
 
       // Update attendees
+      // Note: Calendar owner (organizer) doesn't appear in getGuestList(), so exclude from comparison
+      const calendarOwner = calendar.getId().toLowerCase();
       const currentGuests = event.getGuestList().map(g => g.getEmail().toLowerCase());
-      const newGuests = project.getAllRecipientEmails(this.directory);
+      const newGuests = project.getAllRecipientEmails(this.directory)
+        .filter(g => g.toLowerCase() !== calendarOwner);
 
       // Remove guests not in project
       for (const guest of currentGuests) {
