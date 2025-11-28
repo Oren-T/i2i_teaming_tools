@@ -46,7 +46,6 @@ const PROJECT_STATUS = {
 // These keys must exist in the Config sheet (Column A)
 const REQUIRED_CONFIG_KEYS = [
   'District ID',
-  'School Year',
   'Next Serial',
   'Parent Folder ID',
   'Project Template ID',
@@ -62,7 +61,8 @@ const REQUIRED_CONFIG_KEYS = [
 // ===== OPTIONAL CONFIG KEYS =====
 // These keys are optional in the Config sheet
 const OPTIONAL_CONFIG_KEYS = [
-  'Debug Mode'  // Set to "true" to enable verbose logging
+  'Debug Mode',              // Set to "true" to enable verbose logging
+  'School Year Start Month'  // Month (1-12) when school year begins (default: 7 for July)
 ];
 
 // ===== REQUIRED PROJECT COLUMNS =====

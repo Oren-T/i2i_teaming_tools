@@ -66,14 +66,6 @@ class Config {
   }
 
   /**
-   * Gets the School Year in yy_yy format (e.g., "25_26").
-   * @returns {string} School year
-   */
-  get schoolYear() {
-    return String(this.get('School Year') || '').trim();
-  }
-
-  /**
    * Gets the next serial number for project IDs.
    * @returns {number} Next serial number
    */
@@ -153,6 +145,21 @@ class Config {
    */
   get emailTemplateCancellation() {
     return String(this.get('Email Template - Project Cancellation') || '').trim();
+  }
+
+  /**
+   * Gets the month when the school year starts (1-12).
+   * Defaults to 7 (July) if not configured.
+   * @returns {number} Start month (1 = January, 7 = July, etc.)
+   */
+  get schoolYearStartMonth() {
+    const value = this.get('School Year Start Month');
+    const parsed = parseInt(value, 10);
+    // Validate range 1-12, default to 7 (July)
+    if (isNaN(parsed) || parsed < 1 || parsed > 12) {
+      return 7;
+    }
+    return parsed;
   }
 
   // ===== SERIAL NUMBER MANAGEMENT =====

@@ -407,6 +407,10 @@ function createMenu(sSht) {
     .addItem('Refresh Permissions', 'manualRefreshPermissions')
     .addSeparator()
     .addItem('View Status Summary', 'showStatusSummary')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('Admin Tools')
+      .addItem('Create Initial Triggers', 'setupTriggers')
+      .addItem('Delete Triggers', 'removeTriggers'))
     .addToUi();
 
   DEBUG && console.log('createMenu: Menu created');

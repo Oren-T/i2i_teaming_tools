@@ -147,7 +147,7 @@ class ExecutionContext {
       timestamp: this.now.toISOString(),
       config: {
         districtId: this.config.districtId,
-        schoolYear: this.config.schoolYear,
+        schoolYearStartMonth: this.config.schoolYearStartMonth,
         nextSerial: this.config.nextSerial,
         debugMode: DEBUG
       },

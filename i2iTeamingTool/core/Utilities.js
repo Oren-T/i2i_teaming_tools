@@ -252,6 +252,34 @@ function parseDate(value) {
 }
 
 /**
+ * Infers the school year from a deadline date.
+ * School year format is "YY_YY" (e.g., "25_26" for 2025-2026).
+ * @param {Date} deadline - The project deadline date
+ * @param {number} startMonth - Month when school year starts (1-12, default: 7 for July)
+ * @returns {string} School year in YY_YY format
+ */
+function inferSchoolYear(deadline, startMonth = 7) {
+  if (!deadline || !(deadline instanceof Date) || isNaN(deadline.getTime())) {
+    return '';
+  }
+
+  const year = deadline.getFullYear();
+  const month = deadline.getMonth() + 1; // Convert to 1-based
+
+  // If deadline is in/after the start month, it's the "new" school year
+  // e.g., July 2026+ → '26_27, before July 2026 → '25_26
+  if (month >= startMonth) {
+    const startYear = year % 100;
+    const endYear = (year + 1) % 100;
+    return `${padNumber(startYear, 2)}_${padNumber(endYear, 2)}`;
+  } else {
+    const startYear = (year - 1) % 100;
+    const endYear = year % 100;
+    return `${padNumber(startYear, 2)}_${padNumber(endYear, 2)}`;
+  }
+}
+
+/**
  * Creates a display title for a project in the format "[ID] Name".
  * @param {string} projectId - The project ID
  * @param {string} projectName - The project name

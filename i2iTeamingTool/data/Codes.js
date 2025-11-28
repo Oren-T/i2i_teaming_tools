@@ -320,5 +320,19 @@ class Codes {
   getDefaultReminderOffsets() {
     return this.reminderOffsets.length > 0 ? [...this.reminderOffsets] : [...DEFAULTS.REMINDER_OFFSETS];
   }
+
+  /**
+   * Gets the default reminder labels (human-readable format).
+   * Falls back to auto-generated labels if none are defined in the Codes sheet.
+   * @returns {string[]} Default label values (e.g., ["3 days before", "1 week before"])
+   */
+  getDefaultReminderLabels() {
+    if (this.reminderLabels.length > 0) {
+      return [...this.reminderLabels];
+    }
+
+    // Fall back to generating labels from default offsets
+    return DEFAULTS.REMINDER_OFFSETS.map(offset => this.buildDefaultReminderLabel(offset));
+  }
 }
 

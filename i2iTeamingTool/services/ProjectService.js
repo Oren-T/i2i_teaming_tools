@@ -67,11 +67,15 @@ class ProjectService {
     if (isResume) {
       console.log(`ProjectService: Resuming processing for existing project ${projectId}`);
     } else {
-      // Generate new project ID
-      projectId = this.idAllocator.next();
+      // Infer school year from deadline (deadline is required, so this should always succeed)
+      const schoolYear = inferSchoolYear(project.dueDate, this.config.schoolYearStartMonth);
+      DEBUG && console.log(`ProjectService: Inferred school year ${schoolYear} from deadline`);
+
+      // Generate new project ID with the school year
+      projectId = this.idAllocator.next(schoolYear);
       project.projectId = projectId;
       project.createdAt = new Date();
-      project.schoolYear = this.config.schoolYear;
+      project.schoolYear = schoolYear;
     }
 
     // Check if project has a due date (required for calendar event)
@@ -650,11 +654,11 @@ class ProjectService {
       console.warn('ProjectService: Could not determine form submitter email');
     }
 
-    // Set default reminder offsets from Codes sheet
-    const defaultOffsets = this.ctx.codes.getDefaultReminderOffsets();
-    if (defaultOffsets.length > 0) {
-      projectData.reminder_offsets = defaultOffsets.join(',');
-      DEBUG && console.log(`ProjectService: Set default reminder offsets: ${projectData.reminder_offsets}`);
+    // Set default reminder labels from Codes sheet (human-readable format for dropdown compatibility)
+    const defaultLabels = this.ctx.codes.getDefaultReminderLabels();
+    if (defaultLabels.length > 0) {
+      projectData.reminder_offsets = defaultLabels.join(', ');
+      DEBUG && console.log(`ProjectService: Set default reminder labels: ${projectData.reminder_offsets}`);
     }
 
     // Set initial project status

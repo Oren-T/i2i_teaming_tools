@@ -19,19 +19,19 @@ class IdAllocator {
    * Generates the next project ID.
    * IMPORTANT: Caller must hold a script lock before calling this method.
    * Format: DIST-yy_yy-#### (e.g., NUSD-25_26-0024)
+   * @param {string} schoolYear - School year in YY_YY format (inferred from deadline)
    * @returns {string} The generated project ID
-   * @throws {Error} If config is invalid
+   * @throws {Error} If district ID or school year is missing
    */
-  next() {
+  next(schoolYear) {
     const districtId = this.config.districtId;
-    const schoolYear = this.config.schoolYear;
 
     if (!districtId) {
       throw new Error('IdAllocator: District ID is not configured');
     }
 
     if (!schoolYear) {
-      throw new Error('IdAllocator: School Year is not configured');
+      throw new Error('IdAllocator: School Year could not be inferred from deadline');
     }
 
     // Get and increment the serial number

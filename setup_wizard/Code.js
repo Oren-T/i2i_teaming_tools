@@ -226,6 +226,13 @@ function copyMainSpreadsheet(targetFolder) {
   const copiedFile = sourceFile.makeCopy(NAMES.MAIN_SPREADSHEET, targetFolder);
   const spreadsheet = SpreadsheetApp.openById(copiedFile.getId());
 
+  // Hide the Status Snapshot sheet
+  const snapshotSheet = spreadsheet.getSheetByName('Status Snapshot');
+  if (snapshotSheet) {
+    console.log('Hiding sheet: Status Snapshot');
+    snapshotSheet.hideSheet();
+  }
+
   console.log(`Created spreadsheet: ${spreadsheet.getId()}`);
   return spreadsheet;
 }
@@ -277,6 +284,12 @@ function setupForm(targetFolder, spreadsheet) {
   if (formResponsesSheet && formResponsesSheet.getName() !== SHEET_NAMES.FORM_RESPONSES) {
     console.log(`Renaming "${formResponsesSheet.getName()}" → "${SHEET_NAMES.FORM_RESPONSES}"`);
     formResponsesSheet.setName(SHEET_NAMES.FORM_RESPONSES);
+  }
+
+  // Hide the Form Responses (Raw) sheet
+  if (formResponsesSheet) {
+    console.log(`Hiding sheet: ${SHEET_NAMES.FORM_RESPONSES}`);
+    formResponsesSheet.hideSheet();
   }
 
   const formId = form.getId();
@@ -497,7 +510,9 @@ function getSetupSummaryEmailHtml(info) {
     
     <li><strong>Add Staff Directory</strong><br>
       Go to the <code>Directory</code> sheet<br>
-      Add staff members with their Name, Email Address, and Permissions</li>
+      Add staff members with their Name, Email Address, and Permissions<br>
+      Then update permissions: <code>Teaming Tool</code> → <code>Refresh Permissions</code><br>
+      This syncs spreadsheet access with Directory permissions</li>
     
     <li><strong>Sync Form Dropdowns</strong><br>
       From the spreadsheet menu: <code>Teaming Tool</code> → <code>Sync Form Dropdowns</code><br>
@@ -507,10 +522,6 @@ function getSetupSummaryEmailHtml(info) {
       Open the spreadsheet → <code>Extensions</code> → <code>Apps Script</code><br>
       Run the <code>setupTriggers</code> function once<br>
       This creates the automated processing schedules</li>
-    
-    <li><strong>Share the Folder</strong><br>
-      Share the <a href="${folderUrl}">root folder</a> with appropriate team members<br>
-      Use <code>Viewer</code> or <code>Editor</code> access as needed</li>
     
     <li><strong>Distribute the Form Link</strong><br>
       Share the form URL with users who need to submit projects</li>
