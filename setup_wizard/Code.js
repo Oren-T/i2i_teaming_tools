@@ -244,17 +244,40 @@ function setupForm(targetFolder, spreadsheet) {
   const copiedFile = sourceFile.makeCopy(NAMES.FORM, targetFolder);
   const form = FormApp.openById(copiedFile.getId());
 
-  // Link form to the spreadsheet's Form Responses tab
-  console.log(`Linking form to spreadsheet tab: ${SHEET_NAMES.FORM_RESPONSES}`);
+  // Delete the placeholder "Form Responses (Raw)" sheet from the template copy
+  // (the form will create its own responses sheet when linked)
+  const existingResponsesSheet = spreadsheet.getSheetByName(SHEET_NAMES.FORM_RESPONSES);
+  if (existingResponsesSheet) {
+    console.log(`Deleting placeholder sheet: ${SHEET_NAMES.FORM_RESPONSES}`);
+    spreadsheet.deleteSheet(existingResponsesSheet);
+  }
+
+  // Publish the form first (copied forms are in unpublished/draft state)
+  // This must be done before setAcceptingResponses() or setDestination()
+  console.log('Publishing form...');
+  form.setPublished(true);
+
+  // Link form to the spreadsheet (creates a new responses sheet)
+  console.log('Linking form to spreadsheet...');
   form.setDestination(FormApp.DestinationType.SPREADSHEET, spreadsheet.getId());
 
-  // The form creates a new responses sheet - we need to rename it or handle this
-  // For now, we'll let the form create its default sheet
-  // Note: The library expects "Form Responses (Raw)" - the template should have this
+  // Small delay to let the linking complete
+  Utilities.sleep(1000);
 
-  // Publish the form (make it accepting responses)
-  console.log('Publishing form...');
+  // Enable response collection
+  console.log('Enabling form responses...');
   form.setAcceptingResponses(true);
+
+  // Give the API a moment to create the responses sheet
+  SpreadsheetApp.flush();
+  Utilities.sleep(2000);
+
+  // Find and rename the form's responses sheet to match what the library expects
+  const formResponsesSheet = findFormResponsesSheet(spreadsheet);
+  if (formResponsesSheet && formResponsesSheet.getName() !== SHEET_NAMES.FORM_RESPONSES) {
+    console.log(`Renaming "${formResponsesSheet.getName()}" → "${SHEET_NAMES.FORM_RESPONSES}"`);
+    formResponsesSheet.setName(SHEET_NAMES.FORM_RESPONSES);
+  }
 
   const formId = form.getId();
   const publishedUrl = form.getPublishedUrl();
@@ -268,6 +291,24 @@ function setupForm(targetFolder, spreadsheet) {
     publishedUrl: publishedUrl,
     editUrl: editUrl
   };
+}
+
+/**
+ * Finds the form responses sheet in a spreadsheet.
+ * Looks for sheets with names starting with "Form Responses".
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet to search
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet|null} The form responses sheet, or null
+ */
+function findFormResponsesSheet(spreadsheet) {
+  const sheets = spreadsheet.getSheets();
+  for (const sheet of sheets) {
+    const name = sheet.getName();
+    // Match "Form Responses 1", "Form Responses 2", etc.
+    if (name.startsWith('Form Responses') && name !== SHEET_NAMES.FORM_RESPONSES) {
+      return sheet;
+    }
+  }
+  return null;
 }
 
 /**
@@ -425,13 +466,13 @@ function getSetupSummaryEmailHtml(info) {
   </style>
 </head>
 <body>
-  <h1>🎉 i2i Teaming Tool Setup Complete</h1>
+  <h1>i2i Teaming Tool Setup Complete</h1>
   
   <div class="success-banner">
     <strong>Your new district instance has been created successfully!</strong>
   </div>
 
-  <h2>📁 Created Resources</h2>
+  <h2>Created Resources</h2>
   <div class="info-box">
     <dl>
       <dt>Root Folder</dt>
@@ -480,7 +521,7 @@ function getSetupSummaryEmailHtml(info) {
     Without this, automated processing won't work.
   </div>
 
-  <h2>📚 Sheet Overview</h2>
+  <h2>Sheet Overview</h2>
   <div class="info-box">
     <dl>
       <dt>Project Management Sheet</dt>
