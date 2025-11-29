@@ -345,8 +345,10 @@ class NotificationService {
    * Sends error notification to configured admin emails.
    * @param {string} subject - Error subject
    * @param {string} message - Error message/details
+   * @param {Object} options - Optional settings
+   * @param {string} options.cc - Email address to CC (e.g., the requester)
    */
-  sendErrorNotification(subject, message) {
+  sendErrorNotification(subject, message, options = {}) {
     const adminEmails = this.config.errorEmailAddresses;
     if (adminEmails.length === 0) {
       console.warn('NotificationService: No admin emails configured for error notifications');
@@ -357,7 +359,13 @@ class NotificationService {
     const body = `An error occurred in the Teaming Tool automation:\n\n${message}\n\n` +
                  `Time: ${new Date().toLocaleString()}`;
 
-    this.sendEmail(adminEmails, fullSubject, body);
+    // CC is best-effort - if provided and valid, include it
+    const emailOptions = {};
+    if (options.cc && isValidEmail(options.cc)) {
+      emailOptions.cc = options.cc;
+    }
+
+    this.sendEmail(adminEmails, fullSubject, body, emailOptions);
   }
 
   /**

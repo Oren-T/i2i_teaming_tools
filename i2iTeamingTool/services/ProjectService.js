@@ -16,6 +16,97 @@ class ProjectService {
     this.notificationService = ctx.notificationService;
   }
 
+  // ===== VALIDATION METHODS =====
+
+  /**
+   * Validates that a project has all required data before processing.
+   * Checks required fields and validates directory lookups.
+   * @param {Project} project - The project to validate
+   * @returns {Object} { valid: boolean, errors: string[] }
+   */
+  validateProjectData(project) {
+    const errors = [];
+
+    // Required field: Project Title
+    if (!project.projectName) {
+      errors.push('Missing required field: Project Title');
+    }
+
+    // Required field: Deadline (Due Date)
+    if (!project.dueDate) {
+      errors.push('Missing required field: Deadline (Due Date)');
+    }
+
+    // Required field: Requested By (must resolve to valid email)
+    if (!project.requestedBy) {
+      errors.push('Missing required field: Requested By');
+    } else {
+      const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
+      if (!requesterEmail) {
+        errors.push(`Requester "${project.requestedBy}" not found in Directory and is not a valid email address`);
+      }
+    }
+
+    // Required field: Assignee (at least one that resolves to valid email)
+    const assignees = project.assignees;
+    if (assignees.length === 0) {
+      errors.push('Missing required field: Assignee');
+    } else {
+      const invalidAssignees = [];
+      for (const assignee of assignees) {
+        const email = this.directory.resolveToEmail(assignee);
+        if (!email) {
+          invalidAssignees.push(assignee);
+        }
+      }
+      if (invalidAssignees.length > 0) {
+        if (invalidAssignees.length === assignees.length) {
+          // All assignees are invalid
+          errors.push(`No valid assignees found. The following could not be resolved: ${invalidAssignees.join(', ')}`);
+        } else {
+          // Some assignees are invalid
+          errors.push(`Some assignees could not be resolved: ${invalidAssignees.join(', ')}`);
+        }
+      }
+    }
+
+    // Optional field: Category - default to LCAP if missing (handled in processing, not an error)
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Builds a detailed error message for notification purposes.
+   * @param {Project} project - The project that encountered an error
+   * @param {string} errorType - Brief description of the error type
+   * @param {string|string[]} errorDetails - The specific error(s)
+   * @returns {string} Formatted error message
+   */
+  buildErrorMessage(project, errorType, errorDetails) {
+    const details = Array.isArray(errorDetails) ? errorDetails : [errorDetails];
+    const row = project.getRowIndex();
+
+    const lines = [
+      `${errorType}`,
+      '',
+      'Project Details:',
+      `  Row: ${row}`,
+      `  Title: ${project.projectName || '(not provided)'}`,
+      `  Project ID: ${project.projectId || '(not yet assigned)'}`,
+      `  Requested By: ${project.requestedBy || '(not provided)'}`,
+      `  Assignee(s): ${project.assignee || '(not provided)'}`,
+      `  Due Date: ${project.dueDate ? formatDate(project.dueDate) : '(not provided)'}`,
+      '',
+      'Error Details:'
+    ];
+
+    for (const detail of details) {
+      lines.push(`  • ${detail}`);
+    }
+
+    return lines.join('\n');
+  }
+
   // ===== MAIN PROCESSING METHODS =====
 
   /**
@@ -33,12 +124,19 @@ class ProjectService {
         console.error(`ProjectService: Error processing project at row ${project.getRowIndex()}: ${error.message}`);
         this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
-        // Send error notification
+        // Build detailed error message
+        const errorMessage = this.buildErrorMessage(
+          project,
+          'An unexpected error occurred while processing this project.',
+          error.message
+        );
+
+        // Send error notification with CC to requester (best-effort)
+        const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
         this.notificationService.sendErrorNotification(
           'Project Processing Failed',
-          `Failed to process project at row ${project.getRowIndex()}.\n` +
-          `Project: ${project.projectName || '(no name)'}\n` +
-          `Error: ${error.message}`
+          errorMessage,
+          { cc: requesterEmail }
         );
       }
     }
@@ -50,6 +148,28 @@ class ProjectService {
    */
   processReadyProject(project) {
     DEBUG && console.log(`ProjectService: Processing ready project at row ${project.getRowIndex()}`);
+
+    // Validate required data FIRST, before any side effects
+    const validation = this.validateProjectData(project);
+    if (!validation.valid) {
+      const errorMessage = this.buildErrorMessage(
+        project,
+        'Project failed validation. Please correct the following issues and set status back to "Ready" to retry.',
+        validation.errors
+      );
+      console.error(`ProjectService: Validation failed for row ${project.getRowIndex()}: ${validation.errors.join('; ')}`);
+      this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
+
+      // Send error notification - CC requester if we can resolve their email
+      // (they might not be in directory, which is one of the validation errors)
+      const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
+      this.notificationService.sendErrorNotification(
+        'Project Validation Failed',
+        errorMessage,
+        { cc: requesterEmail }
+      );
+      return;
+    }
 
     // Check if project already has an ID.
     // If so, treat this as a resume/retry operation rather than a new creation.
@@ -67,7 +187,7 @@ class ProjectService {
     if (isResume) {
       console.log(`ProjectService: Resuming processing for existing project ${projectId}`);
     } else {
-      // Infer school year from deadline (deadline is required, so this should always succeed)
+      // Infer school year from deadline (validated above, so this should always succeed)
       const schoolYear = inferSchoolYear(project.dueDate, this.config.schoolYearStartMonth);
       DEBUG && console.log(`ProjectService: Inferred school year ${schoolYear} from deadline`);
 
@@ -76,20 +196,6 @@ class ProjectService {
       project.projectId = projectId;
       project.createdAt = new Date();
       project.schoolYear = schoolYear;
-    }
-
-    // Check if project has a due date (required for calendar event)
-    if (!project.dueDate) {
-      const errorMsg = `Project at row ${project.getRowIndex()} is missing a due date. ` +
-                       `A deadline is required to create the calendar event.`;
-      console.error(`ProjectService: ${errorMsg}`);
-      this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
-
-      this.notificationService.sendErrorNotification(
-        'Project Missing Due Date',
-        `${errorMsg}\nProject name: ${project.projectName || '(no name)'}`
-      );
-      return;
     }
 
     // Create project folder (idempotent check)
@@ -130,6 +236,15 @@ class ProjectService {
       project.projectStatus = PROJECT_STATUS.PROJECT_ASSIGNED;
     }
 
+    // Set default reminder timelines if not already specified
+    if (!project.reminderOffsetsRaw) {
+      const defaultLabels = this.ctx.codes.getDefaultReminderLabels();
+      if (defaultLabels.length > 0) {
+        project.reminderOffsets = defaultLabels.join(', ');
+        DEBUG && console.log(`ProjectService: Set default reminder labels: ${project.reminderOffsetsRaw}`);
+      }
+    }
+
     // Update automation status
     this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
 
@@ -165,10 +280,19 @@ class ProjectService {
         console.error(`ProjectService: Error processing update for ${project.projectId}: ${error.message}`);
         this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
+        // Build detailed error message
+        const errorMessage = this.buildErrorMessage(
+          project,
+          'An error occurred while processing project updates.',
+          error.message
+        );
+
+        // Send error notification with CC to requester
+        const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
         this.notificationService.sendErrorNotification(
           'Project Update Failed',
-          `Failed to process update for project ${project.projectId}.\n` +
-          `Error: ${error.message}`
+          errorMessage,
+          { cc: requesterEmail }
         );
       }
     }
@@ -212,10 +336,19 @@ class ProjectService {
         console.error(`ProjectService: Error processing delete for ${project.projectId}: ${error.message}`);
         this.setAutomationStatus(project, AUTOMATION_STATUS.ERROR);
 
+        // Build detailed error message
+        const errorMessage = this.buildErrorMessage(
+          project,
+          'An error occurred while processing the project deletion request.',
+          error.message
+        );
+
+        // Send error notification with CC to requester
+        const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
         this.notificationService.sendErrorNotification(
           'Project Deletion Failed',
-          `Failed to process deletion for project ${project.projectId}.\n` +
-          `Error: ${error.message}`
+          errorMessage,
+          { cc: requesterEmail }
         );
       }
     }
@@ -403,11 +536,18 @@ class ProjectService {
 
     // Send error notification if there were sharing problems
     if (sharingErrors.length > 0) {
+      const errorMessage = this.buildErrorMessage(
+        project,
+        'Some issues occurred while sharing the project folder. The project was still created, but manual sharing may be needed.',
+        sharingErrors
+      );
+
+      // CC the requester so they're aware of sharing issues
+      const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
       this.notificationService.sendErrorNotification(
         'Project Folder Sharing Issues',
-        `Some issues occurred while sharing folder for project ${project.projectId} (${project.projectName}):\n\n` +
-        sharingErrors.map(err => `• ${err}`).join('\n') +
-        `\n\nThe project was still created, but manual sharing may be needed.`
+        errorMessage,
+        { cc: requesterEmail }
       );
     }
   }
@@ -652,13 +792,6 @@ class ProjectService {
       DEBUG && console.log(`ProjectService: Form submitted by ${projectData.requested_by}`);
     } else {
       console.warn('ProjectService: Could not determine form submitter email');
-    }
-
-    // Set default reminder labels from Codes sheet (human-readable format for dropdown compatibility)
-    const defaultLabels = this.ctx.codes.getDefaultReminderLabels();
-    if (defaultLabels.length > 0) {
-      projectData.reminder_offsets = defaultLabels.join(', ');
-      DEBUG && console.log(`ProjectService: Set default reminder labels: ${projectData.reminder_offsets}`);
     }
 
     // Set initial project status

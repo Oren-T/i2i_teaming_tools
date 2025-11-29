@@ -216,6 +216,14 @@ class Project {
   }
 
   /**
+   * Sets the reminder offsets (stores as raw string).
+   * @param {string} value - Comma-separated reminder labels or offsets
+   */
+  set reminderOffsets(value) {
+    this.set('reminder_offsets', value);
+  }
+
+  /**
    * @returns {string} Automation status (e.g., "Ready", "Created")
    */
   get automationStatus() {

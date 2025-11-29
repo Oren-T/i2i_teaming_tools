@@ -108,19 +108,20 @@ function parseReminderOffsets(offsets) {
   const result = [];
 
   for (const part of parts) {
-    // Try direct integer parse first
-    const num = parseInt(part, 10);
-    if (!isNaN(num)) {
-      result.push(num);
-      continue;
-    }
-
-    // Try extracting number from human-readable format like "3 days before"
+    // Check for human-readable format like "3 days before" or "1 week before"
+    // Must check this FIRST because parseInt("3 days before") returns 3
     const match = part.match(/(\d+)\s*(day|week)/i);
     if (match) {
       const value = parseInt(match[1], 10);
       const unit = match[2].toLowerCase();
       result.push(unit === 'week' ? value * 7 : value);
+      continue;
+    }
+
+    // Fall back to direct integer parse for pure numeric values like "3" or "14"
+    const num = parseInt(part, 10);
+    if (!isNaN(num)) {
+      result.push(num);
     }
   }
 

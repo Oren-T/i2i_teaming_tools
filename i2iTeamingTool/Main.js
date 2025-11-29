@@ -410,7 +410,8 @@ function createMenu(sSht) {
     .addSeparator()
     .addSubMenu(ui.createMenu('Admin Tools')
       .addItem('Create Initial Triggers', 'setupTriggers')
-      .addItem('Delete Triggers', 'removeTriggers'))
+      .addItem('Delete Triggers', 'removeTriggers')
+      .addItem('Validate Setup', 'validateSetup'))
     .addToUi();
 
   DEBUG && console.log('createMenu: Menu created');
