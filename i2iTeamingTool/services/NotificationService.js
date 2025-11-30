@@ -263,8 +263,9 @@ class NotificationService {
    * Sends project update notification to assignees, CC'ing the requester.
    * Sends a single email to all assignees (not individual emails).
    * @param {Project} project - The updated project
+   * @param {Object|null} changes - Changes object from detectProjectChanges, or null
    */
-  sendUpdateNotification(project) {
+  sendUpdateNotification(project, changes = null) {
     const templateId = this.config.emailTemplateUpdate;
     if (!templateId) {
       console.warn('NotificationService: Project Update email template not configured');
@@ -285,8 +286,12 @@ class NotificationService {
       recipientName = 'All';
     }
 
+    // Build the changes summary for the email
+    const changesSummary = this.buildChangesSummary(changes);
+
     const tokenValues = project.getTokenValues(this.directory, {
-      RECIPIENT_NAME: recipientName
+      RECIPIENT_NAME: recipientName,
+      CHANGES_SUMMARY: changesSummary
     });
 
     const prepared = this.prepareEmail(templateId, tokenValues);
@@ -298,6 +303,75 @@ class NotificationService {
     this.sendEmail(assigneeEmails, prepared.subject, prepared.body, {
       cc: requesterEmail || undefined
     });
+  }
+
+  /**
+   * Builds the HTML summary of what changed for update notifications.
+   * @param {Object|null} changes - Changes object or null
+   * @returns {string} HTML string describing what changed
+   */
+  buildChangesSummary(changes) {
+    // If we couldn't detect changes (no calendar event to compare), use generic message
+    if (!changes) {
+      return 'A project you are involved with has been updated.<br><br>' +
+             'Below are the current project details:';
+    }
+
+    // If no key fields changed
+    if (changes.noKeyChanges) {
+      return 'A project you are involved with has been updated. ' +
+             'The deadline, title, and team members remain unchanged.<br><br>' +
+             'Below are the current project details:';
+    }
+
+    // Build list of specific changes
+    const changeLines = [];
+
+    if (changes.dateChanged) {
+      const oldDate = formatDate(changes.dateChanged.old) || '(none)';
+      const newDate = formatDate(changes.dateChanged.new) || '(none)';
+      changeLines.push(`Deadline: ${oldDate} → ${newDate}`);
+    }
+
+    if (changes.titleChanged) {
+      // Extract just the project name from displayTitle format "Name [ID]"
+      const extractName = (title) => {
+        if (!title) return '(none)';
+        const match = title.match(/^(.+?)\s*\[/);
+        return match ? match[1].trim() : title;
+      };
+      const oldName = extractName(changes.titleChanged.old);
+      const newName = extractName(changes.titleChanged.new);
+      changeLines.push(`Title: "${oldName}" → "${newName}"`);
+    }
+
+    if (changes.peopleAdded.length > 0 || changes.peopleRemoved.length > 0) {
+      const peopleParts = [];
+
+      if (changes.peopleAdded.length > 0) {
+        const addedNames = changes.peopleAdded.map(email => {
+          return this.directory.getNameByEmail(email) || email;
+        });
+        peopleParts.push(`Added: ${addedNames.join(', ')}`);
+      }
+
+      if (changes.peopleRemoved.length > 0) {
+        const removedNames = changes.peopleRemoved.map(email => {
+          return this.directory.getNameByEmail(email) || email;
+        });
+        peopleParts.push(`Removed: ${removedNames.join(', ')}`);
+      }
+
+      changeLines.push(`Team: ${peopleParts.join('. ')}`);
+    }
+
+    // Format the output
+    const changesListHtml = changeLines.map(line => `• ${line}`).join('<br>');
+
+    return 'A project you are involved with has been updated.<br><br>' +
+           '<b>What changed:</b><br>' +
+           changesListHtml + '<br><br>' +
+           'Below are the current project details:';
   }
 
   /**

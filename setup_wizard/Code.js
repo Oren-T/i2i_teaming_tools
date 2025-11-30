@@ -506,7 +506,8 @@ function getSetupSummaryEmailHtml(info) {
   <ul class="checklist">
     <li><strong>Configure District Settings</strong><br>
       Open the <a href="${spreadsheetUrl}">Project Directory</a> → <code>Config</code> sheet<br>
-      Fill in: <code>District ID</code> (e.g., "NUSD") and <code>School Year</code> (e.g., "25_26")</li>
+      Fill in: <code>District ID</code> (e.g., "NUSD") and <code>School Year</code> (e.g., "25_26")<br>
+      Review <code>Error Email Addresses</code> (comma-separated list for admin notifications)</li>
     
     <li><strong>Add Staff Directory</strong><br>
       Go to the <code>Directory</code> sheet<br>

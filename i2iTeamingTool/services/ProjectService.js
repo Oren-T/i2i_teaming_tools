@@ -305,6 +305,9 @@ class ProjectService {
   processUpdatedProject(project) {
     DEBUG && console.log(`ProjectService: Processing updated project ${project.projectId}`);
 
+    // Capture "before" state from calendar event for change detection
+    const beforeState = this.getCalendarEventSnapshot(project);
+
     // Update calendar event
     this.updateCalendarEvent(project);
 
@@ -317,8 +320,127 @@ class ProjectService {
     // Set status back to Created
     this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
 
-    // Send update notification
-    this.notificationService.sendUpdateNotification(project);
+    // Detect what changed and send update notification
+    const changes = this.detectProjectChanges(beforeState, project);
+    this.notificationService.sendUpdateNotification(project, changes);
+  }
+
+  /**
+   * Gets a snapshot of the current calendar event state for comparison.
+   * @param {Project} project - The project to get calendar state for
+   * @returns {Object|null} Snapshot with title, date, guestEmails, or null if unavailable
+   */
+  getCalendarEventSnapshot(project) {
+    const eventId = project.calendarEventId;
+    if (!eventId) {
+      DEBUG && console.log(`ProjectService: No calendar event ID for ${project.projectId}, cannot snapshot`);
+      return null;
+    }
+
+    try {
+      const calendar = CalendarApp.getDefaultCalendar();
+      const event = withBackoff(() => calendar.getEventById(eventId));
+
+      if (!event) {
+        DEBUG && console.log(`ProjectService: Calendar event ${eventId} not found`);
+        return null;
+      }
+
+      // Extract guest emails (normalized to lowercase)
+      const guestEmails = event.getGuestList()
+        .map(g => g.getEmail().toLowerCase())
+        .sort();
+
+      // Get event date - for all-day events, use getAllDayStartDate()
+      const eventDate = event.isAllDayEvent()
+        ? event.getAllDayStartDate()
+        : event.getStartTime();
+
+      return {
+        title: event.getTitle(),
+        date: eventDate,
+        guestEmails: guestEmails
+      };
+    } catch (error) {
+      console.warn(`ProjectService: Could not snapshot calendar event: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Detects changes between the calendar snapshot and current project state.
+   * @param {Object|null} beforeState - The calendar snapshot (or null if unavailable)
+   * @param {Project} project - The current project state
+   * @returns {Object|null} Changes object or null if comparison not possible
+   */
+  detectProjectChanges(beforeState, project) {
+    // If we couldn't get the before state, we can't detect changes
+    if (!beforeState) {
+      return null;
+    }
+
+    const changes = {
+      titleChanged: null,
+      dateChanged: null,
+      peopleAdded: [],
+      peopleRemoved: []
+    };
+
+    // Compare title (calendar stores displayTitle format)
+    const currentTitle = project.displayTitle;
+    if (beforeState.title !== currentTitle) {
+      changes.titleChanged = {
+        old: beforeState.title,
+        new: currentTitle
+      };
+    }
+
+    // Compare date
+    const currentDate = project.dueDate;
+    if (beforeState.date && currentDate) {
+      if (!isSameDay(beforeState.date, currentDate)) {
+        changes.dateChanged = {
+          old: beforeState.date,
+          new: currentDate
+        };
+      }
+    } else if (beforeState.date !== currentDate) {
+      // One is null and the other isn't
+      changes.dateChanged = {
+        old: beforeState.date,
+        new: currentDate
+      };
+    }
+
+    // Compare people (assignees + requestor)
+    const currentEmails = project.getAllRecipientEmails(this.directory)
+      .map(e => e.toLowerCase())
+      .sort();
+
+    const beforeEmails = new Set(beforeState.guestEmails);
+    const currentEmailSet = new Set(currentEmails);
+
+    // Find added people (in current but not in before)
+    for (const email of currentEmails) {
+      if (!beforeEmails.has(email)) {
+        changes.peopleAdded.push(email);
+      }
+    }
+
+    // Find removed people (in before but not in current)
+    for (const email of beforeState.guestEmails) {
+      if (!currentEmailSet.has(email)) {
+        changes.peopleRemoved.push(email);
+      }
+    }
+
+    // Check if any changes were detected
+    const hasChanges = changes.titleChanged ||
+                       changes.dateChanged ||
+                       changes.peopleAdded.length > 0 ||
+                       changes.peopleRemoved.length > 0;
+
+    return hasChanges ? changes : { noKeyChanges: true };
   }
 
   /**
