@@ -162,13 +162,20 @@ class MaintenanceService {
 
     // Update calendar event colors for changed projects (silent - no notifications)
     let colorsUpdated = 0;
+    let descriptionsUpdated = 0;
     for (const { project } of changeDetails) {
       if (this.ctx.projectService.updateCalendarEventColor(project)) {
         colorsUpdated++;
       }
+      if (this.ctx.projectService.updateCalendarEventDescription(project)) {
+        descriptionsUpdated++;
+      }
     }
     if (colorsUpdated > 0) {
       console.log(`MaintenanceService: Updated calendar colors for ${colorsUpdated} project(s)`);
+    }
+    if (descriptionsUpdated > 0) {
+      console.log(`MaintenanceService: Updated calendar descriptions for ${descriptionsUpdated} project(s)`);
     }
 
     // Group changes by recipient (assignees + requested_by)
@@ -373,6 +380,12 @@ class MaintenanceService {
 
       // Update title
       event.setTitle(project.displayTitle);
+
+      // Update description to keep details (including status) in sync.
+      if (this.ctx && this.ctx.projectService && typeof this.ctx.projectService.buildCalendarDescription === 'function') {
+        const description = this.ctx.projectService.buildCalendarDescription(project);
+        event.setDescription(description);
+      }
 
       // Update attendees
       // Note: Calendar owner (organizer) doesn't appear in getGuestList(), so exclude from comparison

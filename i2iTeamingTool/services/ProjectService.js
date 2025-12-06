@@ -934,8 +934,17 @@ class ProjectService {
    * @returns {string} Event description
    */
   buildCalendarDescription(project) {
-    const lines = [
-      `Project: ${project.projectName}`,
+    const lines = [];
+
+    lines.push(`Project: ${project.projectName}`);
+
+    // Include status when available so guests can see it even if colors
+    // don't cascade to their calendars.
+    if (project.projectStatus) {
+      lines.push(`Status: ${project.projectStatus}`);
+    }
+
+    lines.push(
       `Project ID: ${project.projectId}`,
       `Category: ${project.category}`,
       `Requested by: ${project.requestedBy}`,
@@ -944,7 +953,7 @@ class ProjectService {
       `Description: ${project.description}`,
       '',
       `Project Folder: ${project.folderUrl}`
-    ];
+    );
 
     return lines.join('\n');
   }
@@ -979,6 +988,40 @@ class ProjectService {
 
     } catch (error) {
       console.warn(`ProjectService: Error updating calendar color for ${project.projectId}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Updates the calendar event description based on current project details.
+   * This is a silent operation - no notifications are sent.
+   * @param {Project} project - The project with the calendar event
+   * @returns {boolean} True if description was updated, false otherwise
+   */
+  updateCalendarEventDescription(project) {
+    const eventId = project.calendarEventId;
+    if (!eventId) {
+      DEBUG && console.log(`ProjectService: No calendar event ID for ${project.projectId}, skipping description update`);
+      return false;
+    }
+
+    try {
+      const calendar = CalendarApp.getDefaultCalendar();
+      const event = withBackoff(() => calendar.getEventById(eventId));
+
+      if (!event) {
+        DEBUG && console.log(`ProjectService: Calendar event ${eventId} not found`);
+        return false;
+      }
+
+      const description = this.buildCalendarDescription(project);
+      event.setDescription(description);
+
+      DEBUG && console.log(`ProjectService: Updated description for ${project.projectId}`);
+      return true;
+
+    } catch (error) {
+      console.warn(`ProjectService: Error updating calendar description for ${project.projectId}: ${error.message}`);
       return false;
     }
   }

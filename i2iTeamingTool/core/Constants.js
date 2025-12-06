@@ -161,8 +161,10 @@ const EMAIL_TOKENS = {
 const FORM_FIELD_MAP = {
   'Goal #': 'goal_number',
   'Goal # (if available)': 'goal_number',
+  'LCAP Goal # (if available)': 'goal_number',
   'Action #': 'action_number',
   'Action # (if available)': 'action_number',
+  'LCAP Action # (if available)': 'action_number',
   'Category': 'category',
   'Title': 'project_name',              // Legacy title
   'Project Title': 'project_name',       // Preferred title

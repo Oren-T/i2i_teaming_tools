@@ -49,9 +49,32 @@ const NAMES = {
 
 // ===== SHEET NAMES (must match library constants) =====
 const SHEET_NAMES = {
+  PROJECTS: 'Project Management Sheet',
   CONFIG: 'Config',
+  DIRECTORY: 'Directory',
+  CODES: 'Codes',
+  STATUS_SNAPSHOT: 'Status Snapshot',
   FORM_RESPONSES: 'Form Responses (Raw)'
 };
+
+// ===== SHEET LAYOUT (must match library layout in library core/Constants.js) =====
+const PROJECT_INTERNAL_KEY_ROW = 2;  // Row 2: internal column keys
+const CODES_HEADER_ROW = 3;          // Row 3: Codes header row
+const CONFIG_KEY_COLUMN = 1;         // Column A: Config keys
+
+// ===== SYSTEM-MANAGED PROJECT COLUMNS (internal keys in Row 2) =====
+const SYSTEM_PROJECT_COLUMN_KEYS = [
+  'project_id',
+  'created_at',
+  'school_year',
+  'completed_at',
+  'calendar_event_id',
+  'folder_id',
+  'file_id'
+  // Note: automation_status is intentionally NOT listed here.
+  // Users must be able to change automation_status via the dropdown
+  // to request updates/deletes; we rely on ValidationService to constrain values.
+];
 
 // ===== CONFIG KEYS (must match library constants) =====
 const CONFIG_KEYS = {
@@ -141,8 +164,9 @@ function runSetupWizard() {
       projectFoldersFolderId: folders.projectFolders.getId()
     });
 
-    // TODO: Step 8: Apply sheet protections
-    // applySheetProtections(spreadsheet);
+    // Step 8: Apply sheet protections
+    console.log('\n--- Step 8: Applying sheet protections ---');
+    applySheetProtections(spreadsheet);
 
     // Show completion message
     const message = `Setup complete!\n\n` +
@@ -537,8 +561,7 @@ function getSetupSummaryEmailHtml(info) {
   <h2>✅ Next Steps Checklist</h2>
   <ul class="checklist">
     <li><strong>Set Up Automation Triggers</strong><br>
-      Open the spreadsheet → <code>Extensions</code> → <code>Apps Script</code><br>
-      Run the <code>setupTriggers</code> function once<br>
+      Open the spreadsheet → <code>${PRODUCT_NAME}</code> menu → <code>Admin Tools</code> → <code>Create Initial Triggers</code><br>
       This creates the automated processing schedules</li>
     
     <li><strong>Configure District Settings</strong><br>
@@ -549,8 +572,7 @@ function getSetupSummaryEmailHtml(info) {
     <li><strong>Add Staff Directory</strong><br>
       Go to the <code>Directory</code> sheet<br>
       Add staff members with their Name, Email Address, and Permissions<br>
-      Then update permissions: <code>${PRODUCT_NAME}</code> → <code>Refresh Permissions</code><br>
-      This syncs spreadsheet access with Directory permissions</li>
+      This automatically syncs spreadsheet access with Directory permissions</li>
     
     <li><strong>Verify Form Configuration</strong><br>
       Open the <a href="${info.formEditUrl}">form</a> and verify:<br>
@@ -564,11 +586,6 @@ function getSetupSummaryEmailHtml(info) {
       After populating the <code>Config</code> and <code>Codes</code> sheets, right-click each tab → <code>Hide sheet</code><br>
       This keeps these administrative sheets out of view for regular users</li>
   </ul>
-
-  <div class="warning">
-    <strong>⚠️ Important:</strong> Don't forget to run <code>setupTriggers</code> from the Apps Script editor! 
-    Without this, automated processing won't work.
-  </div>
 
   <h2>Sheet Overview</h2>
   <div class="info-box">
@@ -677,21 +694,300 @@ function formatDate(date) {
   return `${month} ${day}, ${year}`;
 }
 
-// ===== SHEET PROTECTIONS (TODO) =====
+// ===== SHEET PROTECTIONS =====
 
 /**
  * Applies sheet protections to the spreadsheet.
- * TODO: Implement this function to set up protections as specified in scratch/setup.md
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet
  */
 function applySheetProtections(spreadsheet) {
-  // TODO: Implement sheet protections
-  // - Protect Row 2 (internal keys) in Projects sheet
-  // - Protect system columns (automation_status, calendar_event_id, folder_id, etc.)
-  // - Protect Config Column A (keys)
-  // - Protect Directory/Codes header rows
-  // - Protect entire Status Snapshot sheet
-  console.log('TODO: Sheet protections not yet implemented');
+  console.log('applySheetProtections: Starting');
+
+  const spreadsheetId = spreadsheet.getId();
+  const file = DriveApp.getFileById(spreadsheetId);
+  const owner = file.getOwner();
+
+  // Project Management Sheet protections
+  const projectsSheet = spreadsheet.getSheetByName(SHEET_NAMES.PROJECTS);
+  if (projectsSheet) {
+    applyProjectsSheetProtections(projectsSheet, owner);
+  } else {
+    console.warn(`applySheetProtections: Projects sheet "${SHEET_NAMES.PROJECTS}" not found, skipping`);
+  }
+
+  // Config sheet protections
+  const configSheet = spreadsheet.getSheetByName(SHEET_NAMES.CONFIG);
+  if (configSheet) {
+    applyConfigSheetProtections(configSheet, owner);
+  } else {
+    console.warn(`applySheetProtections: Config sheet "${SHEET_NAMES.CONFIG}" not found, skipping`);
+  }
+
+  // Directory sheet protections
+  const directorySheet = spreadsheet.getSheetByName(SHEET_NAMES.DIRECTORY);
+  if (directorySheet) {
+    applyHeaderRowProtection(directorySheet, owner, 'Directory: Header Row');
+  } else {
+    console.warn(`applySheetProtections: Directory sheet "${SHEET_NAMES.DIRECTORY}" not found, skipping`);
+  }
+
+  // Codes sheet protections
+  const codesSheet = spreadsheet.getSheetByName(SHEET_NAMES.CODES);
+  if (codesSheet) {
+    applyCodesSheetProtections(codesSheet, owner);
+  } else {
+    console.warn(`applySheetProtections: Codes sheet "${SHEET_NAMES.CODES}" not found, skipping`);
+  }
+
+  // Status Snapshot sheet protections (entire sheet)
+  const snapshotSheet = spreadsheet.getSheetByName(SHEET_NAMES.STATUS_SNAPSHOT);
+  if (snapshotSheet) {
+    applySheetLevelProtection(snapshotSheet, owner, 'Status Snapshot: System-managed');
+  } else {
+    console.warn(`applySheetProtections: Status Snapshot sheet "${SHEET_NAMES.STATUS_SNAPSHOT}" not found, skipping`);
+  }
+
+  // Form Responses (Raw) sheet protections (entire sheet)
+  const formResponsesSheet = spreadsheet.getSheetByName(SHEET_NAMES.FORM_RESPONSES);
+  if (formResponsesSheet) {
+    applySheetLevelProtection(formResponsesSheet, owner, 'Form Responses (Raw): System-managed');
+  } else {
+    console.warn(`applySheetProtections: Form Responses sheet "${SHEET_NAMES.FORM_RESPONSES}" not found, skipping`);
+  }
+
+  console.log('applySheetProtections: Completed');
+}
+
+/**
+ * Applies protections to the main Projects sheet:
+ * - Protects Row 2 (internal keys)
+ * - Protects system-managed columns by internal key
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Projects sheet
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ */
+function applyProjectsSheetProtections(sheet, owner) {
+  console.log('applyProjectsSheetProtections: Applying protections to Projects sheet');
+
+  const rangeProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+
+  // Protect Row 2 (internal keys)
+  const keyRowRange = sheet.getRange(
+    PROJECT_INTERNAL_KEY_ROW,
+    1,
+    1,
+    sheet.getMaxColumns()
+  );
+  const keyRowDescription = 'Projects: Internal Keys (Row 2)';
+
+  if (!hasProtectionWithDescription(rangeProtections, keyRowDescription)) {
+    protectRangeForOwner(keyRowRange, owner, keyRowDescription);
+  }
+
+  // Build column index map from Row 2 (internal keys)
+  const keyRowValues = keyRowRange.getValues()[0];
+  const columnIndexByKey = {};
+
+  for (let i = 0; i < keyRowValues.length; i++) {
+    const key = String(keyRowValues[i] || '').trim();
+    if (key) {
+      columnIndexByKey[key] = i + 1; // 1-based column index
+    }
+  }
+
+  // Protect system-managed columns across the sheet
+  for (const key of SYSTEM_PROJECT_COLUMN_KEYS) {
+    const colIndex = columnIndexByKey[key];
+    if (!colIndex) {
+      console.warn(`applyProjectsSheetProtections: Column key "${key}" not found in Row ${PROJECT_INTERNAL_KEY_ROW}`);
+      continue;
+    }
+
+    const description = `Projects: System Column "${key}"`;
+    if (hasProtectionWithDescription(rangeProtections, description)) {
+      continue;
+    }
+
+    const columnRange = sheet.getRange(
+      1,
+      colIndex,
+      sheet.getMaxRows(),
+      1
+    );
+
+    protectRangeForOwner(columnRange, owner, description);
+  }
+}
+
+/**
+ * Applies protections to the Config sheet:
+ * - Protects Column A (keys)
+ * - Protects the "Next Serial" value cell (Column B) as system-managed
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Config sheet
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ */
+function applyConfigSheetProtections(sheet, owner) {
+  console.log('applyConfigSheetProtections: Applying protections to Config sheet');
+
+  const rangeProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+
+  // Protect Column A (keys)
+  const keyColumnRange = sheet.getRange(
+    1,
+    CONFIG_KEY_COLUMN,
+    sheet.getMaxRows(),
+    1
+  );
+  const keyColumnDescription = 'Config: Keys (Column A)';
+
+  if (!hasProtectionWithDescription(rangeProtections, keyColumnDescription)) {
+    protectRangeForOwner(keyColumnRange, owner, keyColumnDescription);
+  }
+
+  // Protect "Next Serial" value (Column B) as system-managed
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 0) {
+    const keyValues = sheet.getRange(
+      1,
+      CONFIG_KEY_COLUMN,
+      lastRow,
+      1
+    ).getValues();
+
+    for (let i = 0; i < keyValues.length; i++) {
+      const key = String(keyValues[i][0] || '').trim();
+      if (key === CONFIG_KEYS.NEXT_SERIAL) {
+        const rowNumber = i + 1;
+        const nextSerialRange = sheet.getRange(rowNumber, 2, 1, 1);
+        const description = 'Config: Next Serial (system-managed)';
+
+        if (!hasProtectionWithDescription(rangeProtections, description)) {
+          protectRangeForOwner(nextSerialRange, owner, description);
+        }
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Applies header row protection to a sheet (Row 1).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ * @param {string} description - Protection description
+ */
+function applyHeaderRowProtection(sheet, owner, description) {
+  const rangeProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+
+  if (hasProtectionWithDescription(rangeProtections, description)) {
+    return;
+  }
+
+  const headerRange = sheet.getRange(1, 1, 1, sheet.getMaxColumns());
+  protectRangeForOwner(headerRange, owner, description);
+}
+
+/**
+ * Applies protections to the Codes sheet:
+ * - Protects header row (Row 3)
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Codes sheet
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ */
+function applyCodesSheetProtections(sheet, owner) {
+  console.log('applyCodesSheetProtections: Applying protections to Codes sheet');
+
+  const rangeProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  const description = 'Codes: Header Row';
+
+  if (hasProtectionWithDescription(rangeProtections, description)) {
+    return;
+  }
+
+  const headerRange = sheet.getRange(
+    CODES_HEADER_ROW,
+    1,
+    1,
+    sheet.getMaxColumns()
+  );
+  protectRangeForOwner(headerRange, owner, description);
+}
+
+/**
+ * Applies sheet-level protection for a system-managed sheet.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ * @param {string} description - Protection description
+ */
+function applySheetLevelProtection(sheet, owner, description) {
+  const sheetProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+
+  if (hasProtectionWithDescription(sheetProtections, description)) {
+    return;
+  }
+
+  const protection = sheet.protect().setDescription(description);
+  configureProtectionEditors(protection, owner);
+}
+
+/**
+ * Protects a range so that only the owner (admin/script account) can edit it.
+ * @param {GoogleAppsScript.Spreadsheet.Range} range - The range to protect
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ * @param {string} description - Protection description
+ */
+function protectRangeForOwner(range, owner, description) {
+  const protection = range.protect().setDescription(description);
+  configureProtectionEditors(protection, owner);
+}
+
+/**
+ * Configures a Protection object to lock down edits to the owner only.
+ * @param {GoogleAppsScript.Spreadsheet.Protection} protection - The protection object
+ * @param {GoogleAppsScript.Base.User} owner - The spreadsheet owner
+ */
+function configureProtectionEditors(protection, owner) {
+  protection.setWarningOnly(false);
+
+  // Disable domain-wide editing when supported
+  if (typeof protection.canDomainEdit === 'function' && protection.canDomainEdit()) {
+    protection.setDomainEdit(false);
+  }
+
+  if (!owner) {
+    return;
+  }
+
+  try {
+    // Remove any existing editors on this protection, then add the owner back.
+    // getEditors()/removeEditors/addEditor are the supported APIs for Protection.
+    const existingEditors = protection.getEditors();
+    if (existingEditors && existingEditors.length > 0) {
+      protection.removeEditors(existingEditors);
+    }
+    protection.addEditor(owner);
+  } catch (e) {
+    console.warn(`configureProtectionEditors: Could not set editors for protection "${protection.getDescription()}": ${e.message}`);
+  }
+}
+
+/**
+ * Checks whether a collection of protections already contains one
+ * with the specified description.
+ * @param {GoogleAppsScript.Spreadsheet.Protection[]} protections - Existing protections
+ * @param {string} description - Description to search for
+ * @returns {boolean} True if a protection with this description exists
+ */
+function hasProtectionWithDescription(protections, description) {
+  if (!protections || protections.length === 0) {
+    return false;
+  }
+
+  for (const protection of protections) {
+    if (protection && protection.getDescription && protection.getDescription() === description) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ===== MENU (for running from spreadsheet context) =====
