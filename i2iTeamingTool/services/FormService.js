@@ -38,7 +38,7 @@ class FormService {
       console.error(`FormService: Could not open form: ${error.message}`);
       try {
         const lines = [
-          'The Google Form used by the Teaming Tool could not be opened.',
+          `The Google Form used by the ${PRODUCT_NAME} could not be opened.`,
           '',
           `Form ID: ${formId}`,
           '',
@@ -252,6 +252,7 @@ class FormService {
 
   /**
    * Validates that the form has expected questions.
+   * Utility function - not currently called anywhere in the codebase.
    * @returns {Object} Validation results
    */
   validateFormStructure() {

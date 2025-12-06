@@ -83,7 +83,7 @@ class Config {
   }
 
   /**
-   * Gets the Root Folder ID for this Teaming Tool instance.
+   * Gets the Root Folder ID for this Project Management Tool instance.
    * This is the top-level folder that contains Templates, Backups,
    * the Project Folders subfolder, and the main spreadsheet.
    * @returns {string} Google Drive folder ID

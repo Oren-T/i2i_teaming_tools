@@ -1,5 +1,5 @@
 /**
- * Main.js - Public API for the i2i Teaming Tool Library.
+ * Main.js - Public API for the Project Management Tool library.
  *
  * These functions are exposed to client scripts and handle all business logic.
  * Client scripts should call these functions with their spreadsheet ID.
@@ -384,7 +384,7 @@ function refreshPermissions(spreadsheetId) {
 function createMenu(sSht) {
   const ui = SpreadsheetApp.getUi();
 
-  ui.createMenu('Teaming Tool')
+  ui.createMenu(PRODUCT_NAME)
     .addItem('Run Now', 'manualRunNow')
     .addItem('Sync Form Dropdowns', 'manualSyncDropdowns')
     .addItem('Refresh Permissions', 'manualRefreshPermissions')
@@ -514,7 +514,7 @@ function refreshDropdownValidation(spreadsheetId) {
  *
  * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
  * @param {ExecutionContext|undefined|null} ctx - Existing execution context, if available
- * @param {string} subject - Error subject (without the [Teaming Tool Error] prefix)
+ * @param {string} subject - Error subject (without the product error prefix)
  * @param {string} message - Error message/details
  */
 function sendAdminErrorNotification(spreadsheetId, ctx, subject, message) {

@@ -1,5 +1,5 @@
 /**
- * Client Script for the i2i Teaming Tool.
+ * Client Script for the Project Management Tool.
  *
  * This is a thin client script that delegates all business logic to the
  * i2iTT library. Each district gets their own copy of this script,
@@ -63,7 +63,7 @@ function onDailyTrigger() {
 
 /**
  * Manual trigger for processing projects immediately.
- * Called from the Teaming Tool menu.
+ * Called from the Project Management Tool menu.
  */
 function manualRunNow() {
   const ui = SpreadsheetApp.getUi();
@@ -78,7 +78,7 @@ function manualRunNow() {
 
 /**
  * Manual trigger for syncing form dropdowns.
- * Called from the Teaming Tool menu.
+ * Called from the Project Management Tool menu.
  */
 function manualSyncDropdowns() {
   const ui = SpreadsheetApp.getUi();
@@ -93,7 +93,7 @@ function manualSyncDropdowns() {
 
 /**
  * Manual trigger for refreshing permissions.
- * Called from the Teaming Tool menu.
+ * Called from the Project Management Tool menu.
  */
 function manualRefreshPermissions() {
   const ui = SpreadsheetApp.getUi();
@@ -108,7 +108,7 @@ function manualRefreshPermissions() {
 
 /**
  * Shows a status summary dialog.
- * Called from the Teaming Tool menu.
+ * Called from the Project Management Tool menu.
  */
 function showStatusSummary() {
   const ui = SpreadsheetApp.getUi();
@@ -138,7 +138,7 @@ function showStatusSummary() {
 // ===== SETUP FUNCTIONS =====
 
 /**
- * Sets up all required triggers for the Teaming Tool.
+ * Sets up all required triggers for the Project Management Tool.
  * Run this function once after initial setup.
  */
 function setupTriggers() {
@@ -179,11 +179,22 @@ function setupTriggers() {
     .onEdit()
     .create();
 
+  // Sync form dropdowns on first-time setup
+  let dropdownSyncStatus = '';
+  try {
+    i2iTT.syncFormDropdowns(SPREADSHEET_ID);
+    dropdownSyncStatus = '\n• Form dropdowns synced';
+  } catch (error) {
+    console.warn(`setupTriggers: Dropdown sync failed (may need to run manually later): ${error.message}`);
+    dropdownSyncStatus = '\n• Form dropdowns sync skipped (run manually if needed)';
+  }
+
   ui.alert('Success', 'Triggers have been set up:\n\n' +
     '• 10-minute batch processing\n' +
     '• Daily 8am maintenance\n' +
     '• Form submission handler\n' +
-    '• Installable edit handler', ui.ButtonSet.OK);
+    '• Installable edit handler' +
+    dropdownSyncStatus, ui.ButtonSet.OK);
 }
 
 /**

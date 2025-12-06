@@ -94,7 +94,7 @@ class NotificationService {
           htmlBody: options.htmlBody || this.textToHtml(body),
           cc: options.cc,
           bcc: options.bcc,
-          name: options.name || 'Teaming Tool',
+          name: options.name || PRODUCT_NAME,
           replyTo: options.replyTo
         });
       });
@@ -429,8 +429,8 @@ class NotificationService {
       return;
     }
 
-    const fullSubject = `[Teaming Tool Error] ${subject}`;
-    const body = `An error occurred in the Teaming Tool automation:\n\n${message}\n\n` +
+    const fullSubject = `${PRODUCT_ERROR_PREFIX} ${subject}`;
+    const body = `An error occurred in the ${PRODUCT_NAME} automation:\n\n${message}\n\n` +
                  `Time: ${new Date().toLocaleString()}`;
 
     // CC is best-effort - if provided and valid, include it

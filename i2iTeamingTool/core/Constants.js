@@ -1,5 +1,5 @@
 /**
- * Constants for the i2i Teaming Tool library.
+ * Constants for the Project Management Tool library.
  * Contains required keys, status enums, and sheet names.
  */
 
@@ -7,6 +7,10 @@
 // Default is false. Can be enabled per-district by adding "Debug Mode" = "true" to Config sheet.
 // ExecutionContext sets this at runtime based on Config sheet value.
 let DEBUG = false;
+
+// ===== PRODUCT METADATA =====
+const PRODUCT_NAME = 'Project Management Tool';
+const PRODUCT_ERROR_PREFIX = '[Project Management Tool Error]';
 
 // ===== SHEET NAMES =====
 const SHEET_NAMES = {
@@ -153,11 +157,15 @@ const EMAIL_TOKENS = {
 
 // ===== FORM FIELD NAMES =====
 // Maps form question titles to internal keys
+// Multiple titles can map to the same internal key for backward compatibility
 const FORM_FIELD_MAP = {
   'Goal #': 'goal_number',
+  'Goal # (if available)': 'goal_number',
   'Action #': 'action_number',
+  'Action # (if available)': 'action_number',
   'Category': 'category',
-  'Title': 'project_name',
+  'Title': 'project_name',              // Legacy title
+  'Project Title': 'project_name',       // Preferred title
   'Description': 'description',
   'Assigned to': 'assignee',
   'Deadline': 'due_date',

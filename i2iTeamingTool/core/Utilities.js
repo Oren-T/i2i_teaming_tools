@@ -1,5 +1,5 @@
 /**
- * Utility functions for the i2i Teaming Tool library.
+ * Utility functions for the Project Management Tool library.
  * Contains retry logic, date formatting, token substitution, and other helpers.
  */
 
