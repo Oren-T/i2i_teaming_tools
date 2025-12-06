@@ -10,6 +10,10 @@
  * 3. After completion, revoke edit access to this script
  */
 
+// ===== INSTANCE REGISTRY =====
+// Spreadsheet ID for the instance registry (where all created instances are logged)
+const REGISTRY_SPREADSHEET_ID = '1vjKFxxfNPvQMOsEVGz-oFQwoo7b6vcUHReFxgcKwTSw';
+
 // ===== SOURCE TEMPLATE IDS =====
 // These are the master templates in the shared folder
 const SOURCE_IDS = {
@@ -30,6 +34,7 @@ const NAMES = {
   MAIN_SPREADSHEET: 'Project Directory',
   FORM: 'Project Submission Form',
   TEMPLATES_FOLDER: 'Templates',
+  BACKUPS_FOLDER: 'Backups',
   PROJECT_FOLDERS: 'Project Folders',
   PROJECT_FILE_TEMPLATE: 'Project File Template',
   EMAIL_NEW_PROJECT: 'Email Template - New Project',
@@ -48,9 +53,10 @@ const SHEET_NAMES = {
 // ===== CONFIG KEYS (must match library constants) =====
 const CONFIG_KEYS = {
   DISTRICT_ID: 'District ID',
-  SCHOOL_YEAR: 'School Year',
   NEXT_SERIAL: 'Next Serial',
   PARENT_FOLDER_ID: 'Parent Folder ID',
+  ROOT_FOLDER_ID: 'Root Folder ID',
+  BACKUPS_FOLDER_ID: 'Backups Folder ID',
   PROJECT_TEMPLATE_ID: 'Project Template ID',
   FORM_ID: 'Form ID',
   ERROR_EMAIL_ADDRESSES: 'Error Email Addresses',
@@ -104,7 +110,9 @@ function runSetupWizard() {
     // Step 5: Update Config sheet
     console.log('\n--- Step 5: Updating Config sheet ---');
     updateConfigSheet(spreadsheet, {
+      rootFolderId: folders.root.getId(),
       parentFolderId: folders.projectFolders.getId(),
+      backupsFolderId: folders.backups.getId(),
       projectTemplateId: templateIds.projectFile,
       formId: formInfo.formId,
       errorEmail: runnerEmail,
@@ -120,7 +128,17 @@ function runSetupWizard() {
       formEditUrl: formInfo.editUrl
     });
 
-    // TODO: Step 7: Apply sheet protections
+    // Step 7: Log to instance registry
+    console.log('\n--- Step 7: Logging to instance registry ---');
+    logInstanceToRegistry({
+      creatorEmail: runnerEmail,
+      rootFolderId: folders.root.getId(),
+      spreadsheetId: spreadsheet.getId(),
+      formId: formInfo.formId,
+      projectFoldersFolderId: folders.projectFolders.getId()
+    });
+
+    // TODO: Step 8: Apply sheet protections
     // applySheetProtections(spreadsheet);
 
     // Show completion message
@@ -130,7 +148,7 @@ function runSetupWizard() {
       `Form URL: ${formInfo.publishedUrl}\n\n` +
       `A summary email has been sent to ${runnerEmail}.\n\n` +
       `NEXT STEPS:\n` +
-      `1. Open the Config sheet and fill in District ID and School Year\n` +
+      `1. Open the Config sheet and fill in District ID\n` +
       `2. Add staff to the Directory sheet\n` +
       `3. Run "Setup Triggers" from the Apps Script editor`;
 
@@ -183,12 +201,16 @@ function createFolderStructure() {
   console.log(`Creating subfolder: ${NAMES.TEMPLATES_FOLDER}`);
   const templatesFolder = rootFolder.createFolder(NAMES.TEMPLATES_FOLDER);
 
+  console.log(`Creating subfolder: ${NAMES.BACKUPS_FOLDER}`);
+  const backupsFolder = rootFolder.createFolder(NAMES.BACKUPS_FOLDER);
+
   console.log(`Creating subfolder: ${NAMES.PROJECT_FOLDERS}`);
   const projectFoldersFolder = rootFolder.createFolder(NAMES.PROJECT_FOLDERS);
 
   return {
     root: rootFolder,
     templates: templatesFolder,
+    backups: backupsFolder,
     projectFolders: projectFoldersFolder
   };
 }
@@ -403,7 +425,9 @@ function updateConfigSheet(spreadsheet, config) {
 
   // Values to set
   const valuesToSet = [
+    { key: CONFIG_KEYS.ROOT_FOLDER_ID, value: config.rootFolderId },
     { key: CONFIG_KEYS.PARENT_FOLDER_ID, value: config.parentFolderId },
+    { key: CONFIG_KEYS.BACKUPS_FOLDER_ID, value: config.backupsFolderId },
     { key: CONFIG_KEYS.PROJECT_TEMPLATE_ID, value: config.projectTemplateId },
     { key: CONFIG_KEYS.FORM_ID, value: config.formId },
     { key: CONFIG_KEYS.ERROR_EMAIL_ADDRESSES, value: config.errorEmail },
@@ -421,7 +445,12 @@ function updateConfigSheet(spreadsheet, config) {
       configSheet.getRange(row, 2).setValue(value);
       console.log(`Set ${key} = ${value}`);
     } else {
-      console.warn(`Config key "${key}" not found in Config sheet`);
+      // Append missing key at the bottom
+      const lastRow = configSheet.getLastRow();
+      const targetRow = lastRow + 1;
+      configSheet.getRange(targetRow, 1).setValue(key);
+      configSheet.getRange(targetRow, 2).setValue(value);
+      console.log(`Added missing config key "${key}" with value: ${value}`);
     }
   }
 
@@ -504,9 +533,14 @@ function getSetupSummaryEmailHtml(info) {
 
   <h2>✅ Next Steps Checklist</h2>
   <ul class="checklist">
+    <li><strong>Set Up Automation Triggers</strong><br>
+      Open the spreadsheet → <code>Extensions</code> → <code>Apps Script</code><br>
+      Run the <code>setupTriggers</code> function once<br>
+      This creates the automated processing schedules</li>
+    
     <li><strong>Configure District Settings</strong><br>
       Open the <a href="${spreadsheetUrl}">Project Directory</a> → <code>Config</code> sheet<br>
-      Fill in: <code>District ID</code> (e.g., "NUSD") and <code>School Year</code> (e.g., "25_26")<br>
+      Fill in: <code>District ID</code> (e.g., "NUSD")<br>
       Review <code>Error Email Addresses</code> (comma-separated list for admin notifications)</li>
     
     <li><strong>Add Staff Directory</strong><br>
@@ -519,13 +553,17 @@ function getSetupSummaryEmailHtml(info) {
       From the spreadsheet menu: <code>Teaming Tool</code> → <code>Sync Form Dropdowns</code><br>
       This populates the form's assignee dropdown from your Directory</li>
     
-    <li><strong>Set Up Automation Triggers</strong><br>
-      Open the spreadsheet → <code>Extensions</code> → <code>Apps Script</code><br>
-      Run the <code>setupTriggers</code> function once<br>
-      This creates the automated processing schedules</li>
+    <li><strong>Verify Form Configuration</strong><br>
+      Open the <a href="${info.formEditUrl}">form</a> and verify:<br>
+      • The <code>Category</code> dropdown shows options from your <code>Codes</code> sheet<br>
+      • The <code>Assigned to</code> dropdown shows staff from your <code>Directory</code> sheet</li>
     
     <li><strong>Distribute the Form Link</strong><br>
       Share the form URL with users who need to submit projects</li>
+    
+    <li><strong>Hide System Sheets</strong><br>
+      After populating the <code>Config</code> and <code>Codes</code> sheets, right-click each tab → <code>Hide sheet</code><br>
+      This keeps these administrative sheets out of view for regular users</li>
   </ul>
 
   <div class="warning">
@@ -563,6 +601,65 @@ function getSetupSummaryEmailHtml(info) {
 </body>
 </html>
 `;
+}
+
+// ===== INSTANCE REGISTRY =====
+
+/**
+ * Logs a new instance to the central registry spreadsheet.
+ * @param {Object} instanceData - Instance data to log
+ * @param {string} instanceData.creatorEmail - Email of user who ran the wizard
+ * @param {string} instanceData.rootFolderId - Root folder ID
+ * @param {string} instanceData.spreadsheetId - Main spreadsheet ID
+ * @param {string} instanceData.formId - Form ID
+ * @param {string} instanceData.projectFoldersFolderId - Project folders folder ID
+ */
+function logInstanceToRegistry(instanceData) {
+  if (!REGISTRY_SPREADSHEET_ID) {
+    console.warn('logInstanceToRegistry: REGISTRY_SPREADSHEET_ID not set, skipping registry log');
+    return;
+  }
+
+  try {
+    const registrySpreadsheet = SpreadsheetApp.openById(REGISTRY_SPREADSHEET_ID);
+    let registrySheet = registrySpreadsheet.getSheetByName('Instance Registry');
+
+    // Create sheet if it doesn't exist
+    if (!registrySheet) {
+      registrySheet = registrySpreadsheet.insertSheet('Instance Registry');
+      // Set headers
+      registrySheet.getRange(1, 1, 1, 6).setValues([[
+        'Timestamp',
+        'Creator Email',
+        'Root Folder ID',
+        'Spreadsheet ID',
+        'Form ID',
+        'Project Folders Folder ID'
+      ]]);
+      // Format header row
+      registrySheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+      registrySheet.setFrozenRows(1);
+    }
+
+    // Append the new instance data
+    const timestamp = new Date();
+    const newRow = [
+      timestamp,
+      instanceData.creatorEmail,
+      instanceData.rootFolderId,
+      instanceData.spreadsheetId,
+      instanceData.formId,
+      instanceData.projectFoldersFolderId
+    ];
+
+    registrySheet.appendRow(newRow);
+    console.log('Instance logged to registry successfully');
+
+  } catch (error) {
+    // Log error but don't fail setup if registry logging fails
+    console.error(`logInstanceToRegistry error: ${error.message}`);
+    console.error('Setup will continue despite registry logging failure');
+  }
 }
 
 // ===== UTILITY FUNCTIONS =====

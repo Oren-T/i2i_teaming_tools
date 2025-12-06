@@ -156,6 +156,25 @@ class SnapshotSheet {
   }
 
   /**
+   * Adds a single project to the snapshot.
+   * Used when a new project is created to ensure status tracking starts immediately.
+   * @param {string} projectId - The project ID
+   * @param {string} status - The project status
+   */
+  addProject(projectId, status) {
+    if (!this.sheet || !projectId) {
+      return;
+    }
+
+    // Append to the end of the sheet
+    const lastRow = this.sheet.getLastRow();
+    const newRow = lastRow + 1;
+    this.sheet.getRange(newRow, 1, 1, 2).setValues([[projectId, status]]);
+
+    DEBUG && console.log(`SnapshotSheet: Added project ${projectId} with status "${status}"`);
+  }
+
+  /**
    * Gets the underlying Sheet object.
    * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet
    */

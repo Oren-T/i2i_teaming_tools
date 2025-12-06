@@ -94,6 +94,9 @@ class ExecutionContext {
     // NotificationService - email notifications
     this.notificationService = new NotificationService(this.config, this.directory);
 
+    // PermissionService - sharing permissions (spreadsheet + Drive folders)
+    this.permissionService = new PermissionService(this);
+
     // ProjectService - project lifecycle operations
     this.projectService = new ProjectService(this);
 

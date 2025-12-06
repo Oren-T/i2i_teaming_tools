@@ -220,6 +220,12 @@ class ProjectService {
     // Share folder with assignees and requester (idempotent - addEditor is safe to re-run)
     this.shareProjectFolder(project, folderId);
 
+    // Ensure project status is set (for manually added rows) BEFORE calendar event creation,
+    // so the event color reflects the correct status instead of the default.
+    if (!project.projectStatus) {
+      project.projectStatus = PROJECT_STATUS.PROJECT_ASSIGNED;
+    }
+
     // Create calendar event (idempotent check)
     let eventId = project.calendarEventId;
     if (eventId) {
@@ -229,11 +235,6 @@ class ProjectService {
     } else {
       eventId = this.createCalendarEvent(project);
       project.calendarEventId = eventId;
-    }
-
-    // Ensure project status is set (for manually added rows)
-    if (!project.projectStatus) {
-      project.projectStatus = PROJECT_STATUS.PROJECT_ASSIGNED;
     }
 
     // Set default reminder timelines if not already specified
@@ -247,6 +248,13 @@ class ProjectService {
 
     // Update automation status
     this.setAutomationStatus(project, AUTOMATION_STATUS.CREATED);
+
+    // Add to status snapshot immediately so status changes are tracked from creation
+    // This ensures changes are detected even if they occur before the first daily maintenance
+    // Only add for new projects, not resumes (to avoid duplicate snapshot entries)
+    if (!isResume) {
+      this.ctx.snapshotSheet.addProject(project.projectId, project.projectStatus);
+    }
 
     DEBUG && console.log(`ProjectService: Created/Resumed project ${projectId} with folder ${folderId} and event ${eventId}`);
 
@@ -310,6 +318,10 @@ class ProjectService {
 
     // Update calendar event
     this.updateCalendarEvent(project);
+
+    // Update calendar event color based on current status
+    // (notifications are expected here, so this is not silent)
+    this.updateCalendarEventColor(project);
 
     // Update project file (Overview tab)
     this.updateProjectFile(project);
@@ -693,6 +705,29 @@ class ProjectService {
     } catch (error) {
       console.warn(`ProjectService: Could not update project file ${fileId}: ${error.message}`);
       // Don't throw, just log - we don't want to fail the whole process if the file is missing/locked
+
+      try {
+        const errorDetails = [
+          `File ID: ${fileId}`,
+          `Error: ${error.message}`,
+          `Stack: ${error.stack || 'N/A'}`
+        ];
+
+        const errorMessage = this.buildErrorMessage(
+          project,
+          'The project file could not be updated. The project was still processed, but the Overview tab may be out of sync.',
+          errorDetails
+        );
+
+        const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
+        this.notificationService.sendErrorNotification(
+          'Project File Update Failed',
+          errorMessage,
+          { cc: requesterEmail }
+        );
+      } catch (notifyError) {
+        console.error(`ProjectService: Failed to send project file update error notification: ${notifyError.message}`);
+      }
     }
   }
 
@@ -768,8 +803,12 @@ class ProjectService {
       })
     );
 
+    // Set initial color based on project status
+    const color = getCalendarColorForStatus(project.projectStatus);
+    event.setColor(color);
+
     const eventId = event.getId();
-    DEBUG && console.log(`ProjectService: Created calendar event ${eventId} for ${project.projectId} with ${guestEmails.length} guest(s)`);
+    DEBUG && console.log(`ProjectService: Created calendar event ${eventId} for ${project.projectId} with ${guestEmails.length} guest(s), color: ${color}`);
 
     return eventId;
   }
@@ -817,13 +856,43 @@ class ProjectService {
       }
 
       // Add new guests not in current list
+      const guestErrors = [];
+
       for (const guest of newGuests) {
         if (!currentGuests.includes(guest.toLowerCase())) {
           try {
             event.addGuest(guest);
           } catch (e) {
             console.warn(`ProjectService: Could not add guest ${guest}: ${e.message}`);
+            guestErrors.push(`Guest: ${guest} - ${e.message}`);
           }
+        }
+      }
+
+      if (guestErrors.length > 0) {
+        try {
+          const lines = [
+            'One or more guests could not be added to the calendar event.',
+            '',
+            `Project ID: ${project.projectId}`,
+            `Row: ${typeof project.getRowIndex === 'function' ? project.getRowIndex() : '(unknown)'}`,
+            `Calendar Event ID: ${eventId}`,
+            '',
+            'Failures:'
+          ];
+
+          for (const msg of guestErrors) {
+            lines.push(`  • ${msg}`);
+          }
+
+          const requesterEmail = this.directory.resolveToEmail(project.requestedBy);
+          this.notificationService.sendErrorNotification(
+            'Calendar Guest Addition Failed',
+            lines.join('\n'),
+            { cc: requesterEmail }
+          );
+        } catch (notifyError) {
+          console.error(`ProjectService: Failed to send calendar guest addition error notification: ${notifyError.message}`);
         }
       }
 
@@ -878,6 +947,40 @@ class ProjectService {
     ];
 
     return lines.join('\n');
+  }
+
+  /**
+   * Updates the calendar event color based on project status.
+   * This is a silent operation - no notifications are sent.
+   * @param {Project} project - The project with the calendar event
+   * @returns {boolean} True if color was updated, false otherwise
+   */
+  updateCalendarEventColor(project) {
+    const eventId = project.calendarEventId;
+    if (!eventId) {
+      DEBUG && console.log(`ProjectService: No calendar event ID for ${project.projectId}, skipping color update`);
+      return false;
+    }
+
+    try {
+      const calendar = CalendarApp.getDefaultCalendar();
+      const event = withBackoff(() => calendar.getEventById(eventId));
+
+      if (!event) {
+        DEBUG && console.log(`ProjectService: Calendar event ${eventId} not found`);
+        return false;
+      }
+
+      const color = getCalendarColorForStatus(project.projectStatus);
+      event.setColor(color);
+
+      DEBUG && console.log(`ProjectService: Set color for ${project.projectId} to ${color} (status: ${project.projectStatus})`);
+      return true;
+
+    } catch (error) {
+      console.warn(`ProjectService: Error updating calendar color for ${project.projectId}: ${error.message}`);
+      return false;
+    }
   }
 
   // ===== FORM RESPONSE PROCESSING =====

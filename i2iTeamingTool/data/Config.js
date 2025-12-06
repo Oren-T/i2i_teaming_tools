@@ -83,6 +83,24 @@ class Config {
   }
 
   /**
+   * Gets the Root Folder ID for this Teaming Tool instance.
+   * This is the top-level folder that contains Templates, Backups,
+   * the Project Folders subfolder, and the main spreadsheet.
+   * @returns {string} Google Drive folder ID
+   */
+  get rootFolderId() {
+    return String(this.get('Root Folder ID') || '').trim();
+  }
+
+  /**
+   * Gets the Backups Folder ID where weekly spreadsheet backups are stored.
+   * @returns {string} Google Drive folder ID
+   */
+  get backupsFolderId() {
+    return String(this.get('Backups Folder ID') || '').trim();
+  }
+
+  /**
    * Gets the Project Template ID (Google Sheets file to copy).
    * @returns {string} Google Sheets file ID
    */

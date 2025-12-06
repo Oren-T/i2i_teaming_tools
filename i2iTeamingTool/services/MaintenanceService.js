@@ -38,6 +38,11 @@ class MaintenanceService {
       // 4. Sync calendar events (safety net)
       this.syncCalendarEvents();
 
+      // 5. Weekly backup on Sundays
+      if (this.today && this.today.getDay && this.today.getDay() === 0) {
+        this.backupProjectDirectory();
+      }
+
       console.log('MaintenanceService: Daily maintenance completed');
 
     } catch (error) {
@@ -119,6 +124,7 @@ class MaintenanceService {
 
   /**
    * Detects status changes since last snapshot and sends digest emails.
+   * Also updates calendar event colors for changed projects (silently, no notifications).
    */
   detectAndNotifyStatusChanges() {
     DEBUG && console.log('MaintenanceService: Detecting status changes');
@@ -152,6 +158,17 @@ class MaintenanceService {
           newStatus: change.newStatus
         });
       }
+    }
+
+    // Update calendar event colors for changed projects (silent - no notifications)
+    let colorsUpdated = 0;
+    for (const { project } of changeDetails) {
+      if (this.ctx.projectService.updateCalendarEventColor(project)) {
+        colorsUpdated++;
+      }
+    }
+    if (colorsUpdated > 0) {
+      console.log(`MaintenanceService: Updated calendar colors for ${colorsUpdated} project(s)`);
     }
 
     // Group changes by recipient (assignees + requested_by)
@@ -233,6 +250,7 @@ class MaintenanceService {
     let synced = 0;
 
     const calendar = CalendarApp.getDefaultCalendar();
+    const syncErrors = [];
 
     for (const project of createdProjects) {
       if (!project.calendarEventId) {
@@ -242,16 +260,52 @@ class MaintenanceService {
       try {
         const needsSync = this.checkCalendarSync(project, calendar);
         if (needsSync) {
-          this.syncCalendarEvent(project, calendar);
+          this.syncCalendarEvent(project, calendar, syncErrors);
           synced++;
         }
       } catch (error) {
         console.warn(`MaintenanceService: Error syncing event for ${project.projectId}: ${error.message}`);
+        const row = typeof project.getRowIndex === 'function' ? project.getRowIndex() : undefined;
+        syncErrors.push({
+          projectId: project.projectId,
+          row: row,
+          calendarEventId: project.calendarEventId,
+          message: error.message,
+          stack: error.stack
+        });
       }
     }
 
     if (synced > 0) {
       console.log(`MaintenanceService: Synced ${synced} calendar event(s)`);
+    }
+
+    if (syncErrors.length > 0) {
+      const lines = [
+        'One or more calendar events failed to sync during daily maintenance.',
+        '',
+        'Failed projects:'
+      ];
+
+      for (const err of syncErrors) {
+        lines.push(
+          `  • Project ID: ${err.projectId || '(unknown)'}, ` +
+          `Row: ${err.row || '(unknown)'}, ` +
+          `Calendar Event ID: ${err.calendarEventId || '(unknown)'} - ${err.message}`
+        );
+      }
+
+      lines.push('');
+      lines.push('See Apps Script logs for full details, including stack traces if available.');
+
+      try {
+        this.notificationService.sendErrorNotification(
+          'Calendar Sync Errors',
+          lines.join('\n')
+        );
+      } catch (notifyError) {
+        console.error(`MaintenanceService: Failed to send calendar sync error notification: ${notifyError.message}`);
+      }
     }
   }
 
@@ -303,8 +357,9 @@ class MaintenanceService {
    * Syncs a calendar event with project data.
    * @param {Project} project - The project
    * @param {GoogleAppsScript.Calendar.Calendar} calendar - The calendar
+   * @param {Object[]} [syncErrors] - Optional array to collect sync error details
    */
-  syncCalendarEvent(project, calendar) {
+  syncCalendarEvent(project, calendar, syncErrors) {
     try {
       const event = withBackoff(() => calendar.getEventById(project.calendarEventId));
       if (!event) {
@@ -350,8 +405,94 @@ class MaintenanceService {
       DEBUG && console.log(`MaintenanceService: Synced calendar event for ${project.projectId}`);
 
     } catch (error) {
-      console.warn(`MaintenanceService: Error syncing event: ${error.message}`);
+      console.warn(`MaintenanceService: Error syncing event for ${project && project.projectId ? project.projectId : '(unknown project)'}: ${error.message}`);
+
+      if (Array.isArray(syncErrors)) {
+        const row = project && typeof project.getRowIndex === 'function' ? project.getRowIndex() : undefined;
+        syncErrors.push({
+          projectId: project && project.projectId,
+          row: row,
+          calendarEventId: project && project.calendarEventId,
+          message: error.message,
+          stack: error.stack
+        });
+      }
     }
   }
 }
+
+// ===== BACKUPS =====
+
+/**
+ * Creates a dated backup copy of the Project Directory spreadsheet into the Backups folder.
+ * Retains all backups indefinitely (no deletion).
+ *
+ * Notes:
+ * - Skips if Backups Folder ID is not configured.
+ * - If a backup for today's date already exists, does nothing.
+ */
+MaintenanceService.prototype.backupProjectDirectory = function() {
+  DEBUG && console.log('MaintenanceService: Starting weekly backup');
+
+  const backupsFolderId = this.config.backupsFolderId;
+  if (!backupsFolderId) {
+    DEBUG && console.log('MaintenanceService: Backups Folder ID not configured, skipping backup');
+    return;
+  }
+
+  // Resolve folder
+  let backupsFolder;
+  try {
+    backupsFolder = withBackoff(() => DriveApp.getFolderById(backupsFolderId));
+  } catch (error) {
+    console.error(`MaintenanceService: Cannot access Backups folder (${backupsFolderId}): ${error.message}`);
+    try {
+      this.notificationService.sendErrorNotification(
+        'Weekly Backup Failed',
+        `Could not access Backups folder.\nFolder ID: ${backupsFolderId}\nError: ${error.message}`
+      );
+    } catch (e) {
+      // ignore secondary notification failure
+    }
+    return;
+  }
+
+  const spreadsheetId = this.ctx.spreadsheetId;
+  const dateStr = formatDateISO(this.today);
+  const backupName = `Project Directory Backup ${dateStr}`;
+
+  // Check if today's backup already exists
+  let alreadyExists = false;
+  const existingIterator = backupsFolder.getFiles();
+  while (existingIterator.hasNext()) {
+    const f = existingIterator.next();
+    if (f.getName() === backupName) {
+      alreadyExists = true;
+      break;
+    }
+  }
+
+  if (alreadyExists) {
+    console.log(`MaintenanceService: Backup already exists for ${dateStr}, skipping creation`);
+  } else {
+    try {
+      const file = withBackoff(() => DriveApp.getFileById(spreadsheetId));
+      withBackoff(() => file.makeCopy(backupName, backupsFolder));
+      console.log(`MaintenanceService: Created backup "${backupName}"`);
+    } catch (error) {
+      console.error(`MaintenanceService: Failed to create backup: ${error.message}`);
+      try {
+        this.notificationService.sendErrorNotification(
+          'Weekly Backup Failed',
+          `Could not create backup "${backupName}".\nError: ${error.message}\nStack: ${error.stack || 'N/A'}`
+        );
+      } catch (e) {
+        // ignore secondary notification failure
+      }
+      return;
+    }
+  }
+
+  DEBUG && console.log('MaintenanceService: Weekly backup finished');
+};
 

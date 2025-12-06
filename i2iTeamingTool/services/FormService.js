@@ -12,6 +12,7 @@ class FormService {
     this.config = ctx.config;
     this.directory = ctx.directory;
     this.codes = ctx.codes;
+    this.notificationService = ctx.notificationService;
     this.form = null;
   }
 
@@ -35,6 +36,23 @@ class FormService {
       return this.form;
     } catch (error) {
       console.error(`FormService: Could not open form: ${error.message}`);
+      try {
+        const lines = [
+          'The Google Form used by the Teaming Tool could not be opened.',
+          '',
+          `Form ID: ${formId}`,
+          '',
+          `Error: ${error.message}`,
+          `Stack: ${error.stack || 'N/A'}`
+        ];
+
+        this.notificationService.sendErrorNotification(
+          'Form Access Failed',
+          lines.join('\n')
+        );
+      } catch (notifyError) {
+        console.error(`FormService: Failed to send form access error notification: ${notifyError.message}`);
+      }
       return null;
     }
   }
@@ -102,6 +120,24 @@ class FormService {
       }
     } catch (error) {
       console.error(`FormService: Error updating "Assigned to": ${error.message}`);
+      try {
+        const lines = [
+          'An error occurred while syncing the "Assigned to" dropdown in the Google Form.',
+          '',
+          `Form ID: ${this.config.formId || '(not configured)'}`,
+          `Question title: ${item ? item.getTitle() : 'Assigned to'}`,
+          '',
+          `Error: ${error.message}`,
+          `Stack: ${error.stack || 'N/A'}`
+        ];
+
+        this.notificationService.sendErrorNotification(
+          'Form Dropdown Sync Failed (Assigned to)',
+          lines.join('\n')
+        );
+      } catch (notifyError) {
+        console.error(`FormService: Failed to send "Assigned to" sync error notification: ${notifyError.message}`);
+      }
     }
   }
 
@@ -149,6 +185,24 @@ class FormService {
       }
     } catch (error) {
       console.error(`FormService: Error updating "Category": ${error.message}`);
+      try {
+        const lines = [
+          'An error occurred while syncing the "Category" dropdown in the Google Form.',
+          '',
+          `Form ID: ${this.config.formId || '(not configured)'}`,
+          `Question title: ${item ? item.getTitle() : 'Category'}`,
+          '',
+          `Error: ${error.message}`,
+          `Stack: ${error.stack || 'N/A'}`
+        ];
+
+        this.notificationService.sendErrorNotification(
+          'Form Dropdown Sync Failed (Category)',
+          lines.join('\n')
+        );
+      } catch (notifyError) {
+        console.error(`FormService: Failed to send "Category" sync error notification: ${notifyError.message}`);
+      }
     }
   }
 

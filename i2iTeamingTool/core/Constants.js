@@ -48,6 +48,7 @@ const REQUIRED_CONFIG_KEYS = [
   'District ID',
   'Next Serial',
   'Parent Folder ID',
+  'Root Folder ID',
   'Project Template ID',
   'Form ID',
   'Error Email Addresses',
@@ -62,7 +63,8 @@ const REQUIRED_CONFIG_KEYS = [
 // These keys are optional in the Config sheet
 const OPTIONAL_CONFIG_KEYS = [
   'Debug Mode',              // Set to "true" to enable verbose logging
-  'School Year Start Month'  // Month (1-12) when school year begins (default: 7 for July)
+  'School Year Start Month', // Month (1-12) when school year begins (default: 7 for July)
+  'Backups Folder ID'        // Google Drive folder ID where weekly backups are stored
 ];
 
 // ===== REQUIRED PROJECT COLUMNS =====
@@ -93,14 +95,33 @@ const REQUIRED_PROJECT_COLUMNS = [
 const DIRECTORY_COLUMNS = {
   NAME: 'Name',
   EMAIL: 'Email Address',
-  PERMISSIONS: 'Permissions'
+  PERMISSIONS: 'Permissions',      // Legacy (pre-permission-model overhaul)
+  ACTIVE: 'Active?',
+  GLOBAL_ACCESS: 'Global Access',
+  MAIN_FILE_ROLE: 'Project Directory Role',
+  PROJECT_SCOPE: 'Project Folders Role'
+};
+
+// ===== DIRECTORY ACCESS ROLES & SCOPES =====
+// Normalized internal values used by permission evaluation logic.
+const DIRECTORY_ACCESS_ROLES = {
+  NONE: 'none',
+  VIEWER: 'viewer',
+  EDITOR: 'editor'
+};
+
+const DIRECTORY_FOLDER_SCOPES = {
+  NONE: 'none',
+  ASSIGNED_ONLY: 'assigned_only',
+  ALL_VIEWER: 'all_viewer',
+  ALL_EDITOR: 'all_editor'
 };
 
 // ===== CODES COLUMNS =====
 const CODES_COLUMNS = {
   CATEGORY: 'Category',
   STATUS: 'Status',
-  REMINDER_DAYS_OFFSET: 'Reminder Days Offset',
+  REMINDER_DAYS_OFFSET: 'Reminder Days',
   REMINDER_DAYS_READABLE: 'Reminder Days: Readable'
 };
 
@@ -148,4 +169,28 @@ const DEFAULTS = {
   CATEGORY: 'LCAP',
   REMINDER_OFFSETS: [3, 7, 14]
 };
+
+// ===== CALENDAR EVENT COLORS =====
+// Maps project status to Google Calendar EventColor IDs
+// See: https://developers.google.com/apps-script/reference/calendar/event-color
+const CALENDAR_COLORS = {
+  // Status -> color mapping
+  [PROJECT_STATUS.PROJECT_ASSIGNED]: CalendarApp.EventColor.GRAY,
+  [PROJECT_STATUS.COMPLETE]: CalendarApp.EventColor.GREEN,
+  [PROJECT_STATUS.LATE]: CalendarApp.EventColor.RED,
+  // Default for all other statuses (On Track, Behind Schedule, Stuck, etc.)
+  DEFAULT: CalendarApp.EventColor.YELLOW
+};
+
+/**
+ * Gets the calendar color for a project status.
+ * @param {string} status - The project status
+ * @returns {CalendarApp.EventColor} The calendar color
+ */
+function getCalendarColorForStatus(status) {
+  if (!status) {
+    return CALENDAR_COLORS.DEFAULT;
+  }
+  return CALENDAR_COLORS[status] || CALENDAR_COLORS.DEFAULT;
+}
 

@@ -113,7 +113,20 @@ class Validator {
   validateFileAccess() {
     DEBUG && console.log('Validator: Checking file access...');
 
-    // Check Parent Folder
+    // Check Root Folder
+    const rootFolderId = this.config.rootFolderId;
+    if (rootFolderId) {
+      try {
+        withBackoff(() => DriveApp.getFolderById(rootFolderId));
+        DEBUG && console.log('Validator: Root folder accessible');
+      } catch (e) {
+        this.errors.push(`Cannot access Root Folder (ID: ${rootFolderId}): ${e.message}`);
+      }
+    } else {
+      this.errors.push('Root Folder ID is not configured');
+    }
+
+    // Check Parent Folder (Project Folders)
     const parentFolderId = this.config.parentFolderId;
     if (parentFolderId) {
       try {

@@ -118,7 +118,6 @@ function showStatusSummary() {
 
     const message = [
       `District: ${summary.config.districtId}`,
-      `School Year: ${summary.config.schoolYear}`,
       `Next Serial: ${summary.config.nextSerial}`,
       '',
       `Total Projects: ${summary.projectCount}`,

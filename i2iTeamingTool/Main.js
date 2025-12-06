@@ -30,8 +30,10 @@ function processNewProjects(spreadsheetId) {
     return;
   }
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
     ctx.validate();
 
     // Process Ready projects (create folder, templates, calendar event)
@@ -50,6 +52,22 @@ function processNewProjects(spreadsheetId) {
 
   } catch (error) {
     console.error(`processNewProjects error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: processNewProjects',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Project Processing Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   } finally {
     lock.releaseLock();
@@ -76,8 +94,10 @@ function runDailyMaintenance(spreadsheetId) {
     return;
   }
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
     ctx.validate();
 
     // Run all daily maintenance tasks
@@ -90,6 +110,22 @@ function runDailyMaintenance(spreadsheetId) {
 
   } catch (error) {
     console.error(`runDailyMaintenance error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: runDailyMaintenance',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Daily Maintenance Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   } finally {
     lock.releaseLock();
@@ -106,8 +142,10 @@ function runDailyMaintenance(spreadsheetId) {
 function syncFormDropdowns(spreadsheetId) {
   console.log('=== syncFormDropdowns starting ===');
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
 
     // Sync all form dropdowns
     ctx.formService.syncAllDropdowns();
@@ -116,6 +154,22 @@ function syncFormDropdowns(spreadsheetId) {
 
   } catch (error) {
     console.error(`syncFormDropdowns error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: syncFormDropdowns',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Sync Form Dropdowns Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   }
 }
@@ -140,24 +194,22 @@ function handleFormSubmission(spreadsheetId, event) {
     const errorMsg = 'handleFormSubmission: Could not acquire lock after 5 minutes. Submission processing FAILED.';
     console.error(errorMsg);
 
-    // Attempt to send error email notification
-    try {
-      // Create lightweight context just for notification service
-      // We wrap this in try-catch because if obtaining lock failed,
-      // initializing full context might also be risky if it depends on locked resources,
-      // though typically reading config/directory is safe.
-      const ctx = new ExecutionContext(spreadsheetId);
-      ctx.notificationService.sendErrorNotification('Form Submission Lock Timeout', errorMsg);
-    } catch (notifyError) {
-      console.error(`Failed to send lock timeout notification: ${notifyError.message}`);
-    }
+    // Attempt to send error email notification (best-effort, even if full context cannot be initialized)
+    sendAdminErrorNotification(
+      spreadsheetId,
+      null,
+      'Form Submission Lock Timeout',
+      errorMsg
+    );
 
     // Throw error so the trigger is marked as failed in Apps Script dashboard
     throw new Error(errorMsg);
   }
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
     ctx.validate();
 
     // Normalize form response and append to Projects sheet
@@ -173,6 +225,22 @@ function handleFormSubmission(spreadsheetId, event) {
 
   } catch (error) {
     console.error(`handleFormSubmission error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: handleFormSubmission',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Form Submission Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   } finally {
     lock.releaseLock();
@@ -268,7 +336,8 @@ function handleProjectsEdit(ctx, event) {
 
 /**
  * Refreshes sharing permissions on the Main Projects File based on Directory roles.
- * Adds missing permissions, removes people not in Directory, and downgrades as needed.
+ * Syncs permissions for the main spreadsheet, root folder, Project Folders parent,
+ * and all project folders using the Directory permission model.
  * Called manually from the menu.
  *
  * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
@@ -276,118 +345,32 @@ function handleProjectsEdit(ctx, event) {
 function refreshPermissions(spreadsheetId) {
   console.log('=== refreshPermissions starting ===');
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
-    const file = DriveApp.getFileById(spreadsheetId);
-
-    // Get current editors and viewers (excluding owner)
-    const owner = file.getOwner();
-    const ownerEmail = owner ? owner.getEmail().toLowerCase() : '';
-    const currentEditors = file.getEditors().map(e => e.getEmail().toLowerCase());
-    const currentViewers = file.getViewers().map(v => v.getEmail().toLowerCase());
-
-    const permCol = ctx.directory.getColumnIndex(DIRECTORY_COLUMNS.PERMISSIONS);
-
-    if (permCol === undefined) {
-      console.log('refreshPermissions: No Permissions column in Directory');
-      return;
-    }
-
-    // Build map of email -> desired permission from Directory
-    const desiredPermissions = new Map();
-    for (let i = 1; i < ctx.directory.data.length; i++) {
-      const email = String(ctx.directory.data[i][ctx.directory.getColumnIndex(DIRECTORY_COLUMNS.EMAIL)] || '').trim().toLowerCase();
-      const perm = String(ctx.directory.data[i][permCol] || '').trim().toLowerCase();
-
-      if (!email || !isValidEmail(email)) {
-        continue;
-      }
-
-      if (perm === 'edit' || perm === 'editor') {
-        desiredPermissions.set(email, 'edit');
-      } else if (perm === 'view' || perm === 'viewer') {
-        desiredPermissions.set(email, 'view');
-      }
-      // Empty/none/no access = no entry in map (will be removed)
-    }
-
-    // Process additions and changes
-    for (const [email, desiredPerm] of desiredPermissions) {
-      const isEditor = currentEditors.includes(email);
-      const isViewer = currentViewers.includes(email);
-
-      if (desiredPerm === 'edit') {
-        if (!isEditor) {
-          // Need to add as editor (or upgrade from viewer)
-          if (isViewer) {
-            // Upgrade: remove viewer, add editor
-            try {
-              file.removeViewer(email);
-              file.addEditor(email);
-              console.log(`Upgraded to editor: ${email}`);
-            } catch (e) {
-              console.warn(`Could not upgrade ${email} to editor: ${e.message}`);
-            }
-          } else {
-            // New editor
-            try {
-              file.addEditor(email);
-              console.log(`Added editor: ${email}`);
-            } catch (e) {
-              console.warn(`Could not add editor ${email}: ${e.message}`);
-            }
-          }
-        }
-      } else if (desiredPerm === 'view') {
-        if (isEditor) {
-          // Downgrade: remove editor, add viewer
-          try {
-            file.removeEditor(email);
-            file.addViewer(email);
-            console.log(`Downgraded to viewer: ${email}`);
-          } catch (e) {
-            console.warn(`Could not downgrade ${email} to viewer: ${e.message}`);
-          }
-        } else if (!isViewer) {
-          // New viewer
-          try {
-            file.addViewer(email);
-            console.log(`Added viewer: ${email}`);
-          } catch (e) {
-            console.warn(`Could not add viewer ${email}: ${e.message}`);
-          }
-        }
-      }
-    }
-
-    // Remove people who are no longer in Directory or have no access
-    for (const email of currentEditors) {
-      if (email === ownerEmail) continue; // Never remove owner
-      if (!desiredPermissions.has(email)) {
-        try {
-          file.removeEditor(email);
-          console.log(`Removed editor: ${email}`);
-        } catch (e) {
-          console.warn(`Could not remove editor ${email}: ${e.message}`);
-        }
-      }
-    }
-
-    for (const email of currentViewers) {
-      if (!desiredPermissions.has(email)) {
-        try {
-          file.removeViewer(email);
-          console.log(`Removed viewer: ${email}`);
-        } catch (e) {
-          console.warn(`Could not remove viewer ${email}: ${e.message}`);
-        }
-      }
-    }
+    ctx = new ExecutionContext(spreadsheetId);
+    ctx.permissionService.refreshAllPermissions();
 
     console.log('=== refreshPermissions completed ===');
 
   } catch (error) {
     console.error(`refreshPermissions error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: refreshPermissions',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Permission Refresh Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   }
 }
@@ -456,12 +439,30 @@ function validateConfiguration(spreadsheetId) {
 function initializeDropdownValidation(spreadsheetId) {
   console.log('=== initializeDropdownValidation starting ===');
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
     ctx.validationService.initializeColumnValidation();
     console.log('=== initializeDropdownValidation completed ===');
   } catch (error) {
     console.error(`initializeDropdownValidation error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: initializeDropdownValidation',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Initialize Dropdown Validation Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
   }
 }
@@ -475,13 +476,80 @@ function initializeDropdownValidation(spreadsheetId) {
 function refreshDropdownValidation(spreadsheetId) {
   console.log('=== refreshDropdownValidation starting ===');
 
+  let ctx;
+
   try {
-    const ctx = new ExecutionContext(spreadsheetId);
+    ctx = new ExecutionContext(spreadsheetId);
     ctx.validationService.updateAllDropdownValidations();
     console.log('=== refreshDropdownValidation completed ===');
   } catch (error) {
     console.error(`refreshDropdownValidation error: ${error.message}`);
+
+    const messageLines = [
+      `Error: ${error.message}`,
+      '',
+      'Function: refreshDropdownValidation',
+      `Spreadsheet ID: ${spreadsheetId}`,
+      '',
+      `Stack: ${error.stack || 'N/A'}`
+    ];
+    sendAdminErrorNotification(
+      spreadsheetId,
+      ctx,
+      'Refresh Dropdown Validation Failed',
+      messageLines.join('\n')
+    );
+
     throw error;
+  }
+}
+
+/**
+ * Sends an admin error notification for entry-point failures.
+ * Tries to use an existing ExecutionContext if available, otherwise builds
+ * a minimal NotificationService using only the Config and Directory sheets.
+ *
+ * This is designed to work even when parts of the data layer (e.g., Codes)
+ * are misconfigured and prevent full context initialization.
+ *
+ * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
+ * @param {ExecutionContext|undefined|null} ctx - Existing execution context, if available
+ * @param {string} subject - Error subject (without the [Teaming Tool Error] prefix)
+ * @param {string} message - Error message/details
+ */
+function sendAdminErrorNotification(spreadsheetId, ctx, subject, message) {
+  try {
+    let notificationService = null;
+
+    if (ctx && ctx.notificationService) {
+      notificationService = ctx.notificationService;
+    } else {
+      const sSht = SpreadsheetApp.openById(spreadsheetId);
+      const configSheet = sSht.getSheetByName(SHEET_NAMES.CONFIG);
+      if (!configSheet) {
+        console.error('sendAdminErrorNotification: Config sheet not found, cannot send error email');
+        return;
+      }
+
+      const directorySheet = sSht.getSheetByName(SHEET_NAMES.DIRECTORY);
+      if (!directorySheet) {
+        console.error('sendAdminErrorNotification: Directory sheet not found, cannot send error email');
+        return;
+      }
+
+      const config = new Config(configSheet);
+      const directory = new Directory(directorySheet);
+      notificationService = new NotificationService(config, directory);
+    }
+
+    if (!notificationService) {
+      console.error('sendAdminErrorNotification: NotificationService unavailable, skipping error email');
+      return;
+    }
+
+    notificationService.sendErrorNotification(subject, message);
+  } catch (notifyError) {
+    console.error(`sendAdminErrorNotification: Failed to send error notification: ${notifyError.message}`);
   }
 }
 
