@@ -1,4 +1,4 @@
-# i2i Teaming Tool
+# Project Management Tool
 
 Google Apps Script library for managing project workflows with automated folder creation, calendar events, and notifications.
 
