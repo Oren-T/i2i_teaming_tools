@@ -54,7 +54,8 @@ const SHEET_NAMES = {
   DIRECTORY: 'Directory',
   CODES: 'Codes',
   STATUS_SNAPSHOT: 'Status Snapshot',
-  FORM_RESPONSES: 'Form Responses (Raw)'
+  FORM_RESPONSES: 'Form Responses (Raw)',
+  ASSIGNEE_PIVOT: 'Assignee Pivot'
 };
 
 // ===== SHEET LAYOUT (must match library layout in library core/Constants.js) =====
@@ -70,7 +71,8 @@ const SYSTEM_PROJECT_COLUMN_KEYS = [
   'completed_at',
   'calendar_event_id',
   'folder_id',
-  'file_id'
+  'file_id',
+  'url'
   // Note: automation_status is intentionally NOT listed here.
   // Users must be able to change automation_status via the dropdown
   // to request updates/deletes; we rely on ValidationService to constrain values.
@@ -280,6 +282,13 @@ function copyMainSpreadsheet(targetFolder) {
   if (snapshotSheet) {
     console.log('Hiding sheet: Status Snapshot');
     snapshotSheet.hideSheet();
+  }
+
+  // Hide the Assignee Pivot sheet
+  const assigneePivotSheet = spreadsheet.getSheetByName(SHEET_NAMES.ASSIGNEE_PIVOT);
+  if (assigneePivotSheet) {
+    console.log(`Hiding sheet: ${SHEET_NAMES.ASSIGNEE_PIVOT}`);
+    assigneePivotSheet.hideSheet();
   }
 
   console.log(`Created spreadsheet: ${spreadsheet.getId()}`);
@@ -753,6 +762,14 @@ function applySheetProtections(spreadsheet) {
     applySheetLevelProtection(formResponsesSheet, owner, 'Form Responses (Raw): System-managed');
   } else {
     console.warn(`applySheetProtections: Form Responses sheet "${SHEET_NAMES.FORM_RESPONSES}" not found, skipping`);
+  }
+
+  // Assignee Pivot sheet protections (entire sheet)
+  const assigneePivotSheet = spreadsheet.getSheetByName(SHEET_NAMES.ASSIGNEE_PIVOT);
+  if (assigneePivotSheet) {
+    applySheetLevelProtection(assigneePivotSheet, owner, 'Assignee Pivot: System-managed');
+  } else {
+    console.warn(`applySheetProtections: Assignee Pivot sheet "${SHEET_NAMES.ASSIGNEE_PIVOT}" not found, skipping`);
   }
 
   console.log('applySheetProtections: Completed');
