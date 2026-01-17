@@ -163,6 +163,7 @@ const FORM_FIELD_MAP = {
   'Goal #': 'goal_number',
   'Goal # (if available)': 'goal_number',
   'LCAP Goal # (if available)': 'goal_number',
+  'Project or Action': 'goal_number', // This is for Joel and Jill's instance
   'Action #': 'action_number',
   'Action # (if available)': 'action_number',
   'LCAP Action # (if available)': 'action_number',
