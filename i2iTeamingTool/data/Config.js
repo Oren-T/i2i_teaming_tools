@@ -93,6 +93,15 @@ class Config {
   }
 
   /**
+   * Gets the Main Spreadsheet ID for this district.
+   * Used to detect if the current script is running in a backup.
+   * @returns {string} Google Sheets file ID
+   */
+  get mainSpreadsheetId() {
+    return String(this.get('Main Spreadsheet ID') || '').trim();
+  }
+
+  /**
    * Gets the Backups Folder ID where weekly spreadsheet backups are stored.
    * @returns {string} Google Drive folder ID
    */

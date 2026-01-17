@@ -490,7 +490,12 @@ MaintenanceService.prototype.backupProjectDirectory = function() {
   } else {
     try {
       const file = withBackoff(() => DriveApp.getFileById(spreadsheetId));
-      withBackoff(() => file.makeCopy(backupName, backupsFolder));
+      const backupFile = withBackoff(() => file.makeCopy(backupName, backupsFolder));
+
+      // Cleanup: Copying a spreadsheet with an attached form also copies the form.
+      // We need to unlink and delete the form copy to avoid cluttering the Drive.
+      this.cleanupBackupForm(backupFile.getId());
+
       console.log(`MaintenanceService: Created backup "${backupName}"`);
     } catch (error) {
       console.error(`MaintenanceService: Failed to create backup: ${error.message}`);
@@ -509,3 +514,30 @@ MaintenanceService.prototype.backupProjectDirectory = function() {
   DEBUG && console.log('MaintenanceService: Weekly backup finished');
 };
 
+/**
+ * Unlinks and deletes the form copy that is automatically created when a spreadsheet is copied.
+ * @param {string} backupSpreadsheetId - The ID of the newly created backup spreadsheet
+ */
+MaintenanceService.prototype.cleanupBackupForm = function(backupSpreadsheetId) {
+  try {
+    const backupSs = withBackoff(() => SpreadsheetApp.openById(backupSpreadsheetId));
+    const formUrl = backupSs.getFormUrl();
+
+    if (formUrl) {
+      DEBUG && console.log('MaintenanceService: Cleaning up automatically copied form for backup');
+      const form = withBackoff(() => FormApp.openByUrl(formUrl));
+      const formId = form.getId();
+
+      // Unlink form from the backup spreadsheet
+      withBackoff(() => form.removeDestination());
+
+      // Delete the form copy (it was created in the same folder as the backup by Drive)
+      withBackoff(() => DriveApp.getFileById(formId).setTrashed(true));
+
+      DEBUG && console.log(`MaintenanceService: Unlinked and trashed backup form copy (${formId})`);
+    }
+  } catch (error) {
+    // Log but don't fail the backup if cleanup fails
+    console.warn(`MaintenanceService: Failed to cleanup backup form: ${error.message}`);
+  }
+};

@@ -146,6 +146,7 @@ function syncFormDropdowns(spreadsheetId) {
 
   try {
     ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
 
     // Sync all form dropdowns
     ctx.formService.syncAllDropdowns();
@@ -263,6 +264,7 @@ function handleEdit(spreadsheetId, event) {
 
   try {
     const ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
 
     // Handle edits to the Projects sheet
     if (sheetName === SHEET_NAMES.PROJECTS) {
@@ -349,6 +351,8 @@ function refreshPermissions(spreadsheetId) {
 
   try {
     ctx = new ExecutionContext(spreadsheetId);
+    ctx.validate();
+
     ctx.permissionService.refreshAllPermissions();
 
     console.log('=== refreshPermissions completed ===');

@@ -84,6 +84,7 @@ const CONFIG_KEYS = {
   NEXT_SERIAL: 'Next Serial',
   PARENT_FOLDER_ID: 'Parent Folder ID',
   ROOT_FOLDER_ID: 'Root Folder ID',
+  MAIN_SPREADSHEET_ID: 'Main Spreadsheet ID',
   BACKUPS_FOLDER_ID: 'Backups Folder ID',
   PROJECT_TEMPLATE_ID: 'Project Template ID',
   FORM_ID: 'Form ID',
@@ -139,6 +140,7 @@ function runSetupWizard() {
     console.log('\n--- Step 5: Updating Config sheet ---');
     updateConfigSheet(spreadsheet, {
       rootFolderId: folders.root.getId(),
+      mainSpreadsheetId: spreadsheet.getId(),
       parentFolderId: folders.projectFolders.getId(),
       backupsFolderId: folders.backups.getId(),
       projectTemplateId: templateIds.projectFile,
@@ -462,6 +464,7 @@ function updateConfigSheet(spreadsheet, config) {
   // Values to set
   const valuesToSet = [
     { key: CONFIG_KEYS.ROOT_FOLDER_ID, value: config.rootFolderId },
+    { key: CONFIG_KEYS.MAIN_SPREADSHEET_ID, value: config.mainSpreadsheetId },
     { key: CONFIG_KEYS.PARENT_FOLDER_ID, value: config.parentFolderId },
     { key: CONFIG_KEYS.BACKUPS_FOLDER_ID, value: config.backupsFolderId },
     { key: CONFIG_KEYS.PROJECT_TEMPLATE_ID, value: config.projectTemplateId },

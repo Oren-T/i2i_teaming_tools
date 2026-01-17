@@ -113,6 +113,19 @@ class Validator {
   validateFileAccess() {
     DEBUG && console.log('Validator: Checking file access...');
 
+    // Check Main Spreadsheet ID
+    const mainId = this.config.mainSpreadsheetId;
+    if (mainId) {
+      try {
+        withBackoff(() => DriveApp.getFileById(mainId));
+        DEBUG && console.log('Validator: Main spreadsheet accessible');
+      } catch (e) {
+        this.errors.push(`Cannot access Main Spreadsheet (ID: ${mainId}): ${e.message}`);
+      }
+    } else {
+      this.errors.push('Main Spreadsheet ID is not configured');
+    }
+
     // Check Root Folder
     const rootFolderId = this.config.rootFolderId;
     if (rootFolderId) {

@@ -53,6 +53,7 @@ const REQUIRED_CONFIG_KEYS = [
   'Next Serial',
   'Parent Folder ID',
   'Root Folder ID',
+  'Main Spreadsheet ID',
   'Project Template ID',
   'Form ID',
   'Error Email Addresses',

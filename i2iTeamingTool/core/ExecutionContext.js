@@ -134,10 +134,35 @@ class ExecutionContext {
    * Runs validation on the context.
    * @param {Object} [options] - Validation options
    * @param {boolean} [options.includeFileAccess=false] - Include external file checks
+   * @param {boolean} [options.allowBackup=false] - Whether to allow execution in a backup spreadsheet
    * @throws {Error} If validation fails
    */
   validate(options = {}) {
+    const { allowBackup = false } = options;
+
+    // Check if this is a backup spreadsheet
+    if (!allowBackup && this.isBackup()) {
+      const errorMsg = `Automation cannot run in a backup spreadsheet (ID: ${this.spreadsheetId}). ` +
+                       `Please use the main spreadsheet (ID: ${this.config.mainSpreadsheetId}) instead.`;
+      console.error(`ExecutionContext: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
     this.validator.validate(options);
+  }
+
+  /**
+   * Checks if the current spreadsheet is a backup copy.
+   * Compares the current Spreadsheet ID with the Main Spreadsheet ID in Config.
+   * @returns {boolean} True if this is a backup
+   */
+  isBackup() {
+    const mainId = this.config.mainSpreadsheetId;
+    if (!mainId) {
+      DEBUG && console.log('ExecutionContext: Main Spreadsheet ID not configured, cannot detect backup state');
+      return false;
+    }
+    return this.spreadsheetId !== mainId;
   }
 
   /**
