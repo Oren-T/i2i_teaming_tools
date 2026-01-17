@@ -259,11 +259,33 @@ function handleEdit(spreadsheetId, event) {
   const range = event.range;
   const sheet = range.getSheet();
   const sheetName = sheet.getName();
+  const row = range.getRow();
 
-  DEBUG && console.log(`handleEdit: Sheet "${sheetName}", cell ${range.getA1Notation()}`);
+  // FAST GUARD: Only process edits in specific sheets.
+  // This avoids the overhead of ExecutionContext for every irrelevant edit.
+  const relevantSheets = [SHEET_NAMES.PROJECTS, SHEET_NAMES.DIRECTORY, SHEET_NAMES.CODES];
+  if (!relevantSheets.includes(sheetName)) {
+    return;
+  }
+
+  // FAST GUARD: Skip header/metadata rows.
+  if (sheetName === SHEET_NAMES.PROJECTS && row <= 2) return;
+  if (sheetName === SHEET_NAMES.DIRECTORY && row <= 1) return;
+  if (sheetName === SHEET_NAMES.CODES && row <= 3) return;
+
+  DEBUG && console.log(`handleEdit: Processing relevant edit in "${sheetName}", cell ${range.getA1Notation()}`);
 
   try {
+    // INITIALIZE CONTEXT: Only now do we pay the cost of loading config/data.
     const ctx = new ExecutionContext(spreadsheetId);
+
+    // BACKUP GUARD: Silent return if this is a backup to avoid spamming logs.
+    if (ctx.isBackup()) {
+      DEBUG && console.log('handleEdit: Skipping edit in backup spreadsheet');
+      return;
+    }
+
+    // FULL VALIDATION: Ensure the environment is healthy before proceeding.
     ctx.validate();
 
     // Handle edits to the Projects sheet
