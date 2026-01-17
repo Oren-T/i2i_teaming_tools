@@ -44,7 +44,7 @@ function onFormSubmit(e) {
 }
 
 /**
- * Time-driven trigger handler for the 10-minute batch job.
+ * Time-driven trigger handler for the 5-minute batch job.
  * Processes Ready, Updated, and Delete requests.
  */
 function onBatchTrigger() {
@@ -153,10 +153,10 @@ function setupTriggers() {
     }
   }
 
-  // Create 10-minute batch trigger
+  // Create 5-minute batch trigger
   ScriptApp.newTrigger('onBatchTrigger')
     .timeBased()
-    .everyMinutes(10)
+    .everyMinutes(5)
     .create();
 
   // Create daily 8am trigger
@@ -190,7 +190,7 @@ function setupTriggers() {
   }
 
   ui.alert('Success', 'Triggers have been set up:\n\n' +
-    '• 10-minute batch processing\n' +
+    '• 5-minute batch processing\n' +
     '• Daily 8am maintenance\n' +
     '• Form submission handler\n' +
     '• Installable edit handler' +

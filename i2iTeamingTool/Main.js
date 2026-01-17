@@ -12,7 +12,7 @@
 
 /**
  * Processes projects with Ready, Updated, or Delete status.
- * Called by the 10-minute batch trigger or manual "Run Now" action.
+ * Called by the 5-minute batch trigger or manual "Run Now" action.
  *
  * @param {string} spreadsheetId - The Main Projects File spreadsheet ID
  * @throws {Error} If validation fails or processing encounters an unrecoverable error
@@ -412,7 +412,6 @@ function createMenu(sSht) {
   const ui = SpreadsheetApp.getUi();
 
   ui.createMenu(PRODUCT_NAME)
-    .addItem('Run Now', 'manualRunNow')
     .addItem('Sync Form Dropdowns', 'manualSyncDropdowns')
     .addItem('Refresh Permissions', 'manualRefreshPermissions')
     .addSeparator()
