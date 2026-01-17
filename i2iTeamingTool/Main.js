@@ -303,6 +303,7 @@ function handleEdit(spreadsheetId, event) {
     if (sheetName === SHEET_NAMES.CODES) {
       DEBUG && console.log('handleEdit: Codes edited, syncing form dropdowns');
       ctx.formService.syncCategoryDropdown();
+      ctx.formService.syncReminderTimelineDropdown();
     }
 
     // Flush any changes

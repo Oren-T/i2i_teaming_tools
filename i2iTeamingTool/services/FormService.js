@@ -71,6 +71,7 @@ class FormService {
 
     this.syncAssigneeDropdown();
     this.syncCategoryDropdown();
+    this.syncReminderTimelineDropdown();
 
     console.log('FormService: Dropdown sync complete');
   }
@@ -202,6 +203,71 @@ class FormService {
         );
       } catch (notifyError) {
         console.error(`FormService: Failed to send "Category" sync error notification: ${notifyError.message}`);
+      }
+    }
+  }
+
+  /**
+   * Syncs the "Reminder Timeline" checkbox with reminder labels from Codes sheet.
+   */
+  syncReminderTimelineDropdown() {
+    const form = this.getForm();
+    if (!form) return;
+
+    const reminderLabels = this.codes.getReminderLabels();
+    if (reminderLabels.length === 0) {
+      console.warn('FormService: No reminder labels found in Codes sheet');
+      return;
+    }
+
+    // Find the "Reminder Timeline" question
+    const item = this.findFormItem(form, 'Reminder Timeline');
+    if (!item) {
+      DEBUG && console.log('FormService: "Reminder Timeline" question not found in form');
+      return;
+    }
+
+    try {
+      if (item.getType() === FormApp.ItemType.CHECKBOX) {
+        const checkboxItem = item.asCheckboxItem();
+        const choices = reminderLabels.map(label => checkboxItem.createChoice(label));
+        checkboxItem.setChoices(choices);
+        DEBUG && console.log(`FormService: Updated "Reminder Timeline" checkbox with ${reminderLabels.length} options`);
+
+      } else if (item.getType() === FormApp.ItemType.LIST) {
+        const listItem = item.asListItem();
+        const choices = reminderLabels.map(label => listItem.createChoice(label));
+        listItem.setChoices(choices);
+        DEBUG && console.log(`FormService: Updated "Reminder Timeline" list with ${reminderLabels.length} options`);
+
+      } else if (item.getType() === FormApp.ItemType.MULTIPLE_CHOICE) {
+        const mcItem = item.asMultipleChoiceItem();
+        const choices = reminderLabels.map(label => mcItem.createChoice(label));
+        mcItem.setChoices(choices);
+        DEBUG && console.log(`FormService: Updated "Reminder Timeline" multiple choice with ${reminderLabels.length} options`);
+
+      } else {
+        console.warn(`FormService: "Reminder Timeline" question is not a supported type: ${item.getType()}`);
+      }
+    } catch (error) {
+      console.error(`FormService: Error updating "Reminder Timeline": ${error.message}`);
+      try {
+        const lines = [
+          'An error occurred while syncing the "Reminder Timeline" dropdown in the Google Form.',
+          '',
+          `Form ID: ${this.config.formId || '(not configured)'}`,
+          `Question title: ${item ? item.getTitle() : 'Reminder Timeline'}`,
+          '',
+          `Error: ${error.message}`,
+          `Stack: ${error.stack || 'N/A'}`
+        ];
+
+        this.notificationService.sendErrorNotification(
+          'Form Dropdown Sync Failed (Reminder Timeline)',
+          lines.join('\n')
+        );
+      } catch (notifyError) {
+        console.error(`FormService: Failed to send "Reminder Timeline" sync error notification: ${notifyError.message}`);
       }
     }
   }

@@ -172,7 +172,9 @@ const FORM_FIELD_MAP = {
   'Description': 'description',
   'Assigned to': 'assignee',
   'Deadline': 'due_date',
-  'Notes': 'notes'
+  'Notes': 'notes',
+  'Reminder Timeline': 'reminder_offsets',
+  'Total Budget': 'total_budget'
 };
 
 // ===== DEFAULT VALUES =====
