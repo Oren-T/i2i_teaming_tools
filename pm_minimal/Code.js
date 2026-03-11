@@ -59,7 +59,7 @@ function validateSetup() {
   };
 }
 
-// --------------- Task Processing (10-min trigger) ---------------
+// --------------- Task Processing (5-min trigger) ---------------
 
 /**
  * Processes task rows whose "Update Reminders" checkbox is checked.
@@ -83,6 +83,12 @@ function processTask() {
     status:    taskColMap[TASK_COLUMNS.STATUS],
     eventId:   taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID]
   };
+
+  const checkedCount = data.reduce((n, row, i) => n + (i > 0 && row[col.checkbox] === true ? 1 : 0), 0);
+  console.log(`processTask: starting — ${checkedCount} checked row(s) found.`);
+
+  let created = 0;
+  let updated = 0;
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -119,6 +125,7 @@ function processTask() {
       if (project) {
         const projStatus = projectStatuses.get(project);
         if (projStatus === PROJECT_STATUS.COMPLETE || projStatus === PROJECT_STATUS.CANCELLED) {
+          console.log(`Row ${sheetRow}: project "${project}" is ${projStatus} — unchecking.`);
           clearAutoNote(checkboxRange);
           checkboxRange.setValue(false);
           continue;
@@ -149,11 +156,13 @@ function processTask() {
 
       // --- Create or update ---
       if (existingId) {
+        console.log(`Row ${sheetRow}: updating event for "${taskName}".`);
         try {
           Calendar.Events.patch(eventResource, CALENDAR_ID, existingId, { sendUpdates: 'all' });
         }
         catch (patchErr) {
           if (String(patchErr).indexOf('Not Found') !== -1) {
+            console.log(`Row ${sheetRow}: event not found — creating fresh.`);
             const freshEvent = Calendar.Events.insert(eventResource, CALENDAR_ID, { sendUpdates: 'all' });
             tasksSheet.getRange(sheetRow, col.eventId + 1).setValue(freshEvent.id);
           }
@@ -161,10 +170,17 @@ function processTask() {
             throw patchErr;
           }
         }
+        updated++;
       }
       else {
+        console.log(`Row ${sheetRow}: creating new event for "${taskName}".`);
         const newEvent = Calendar.Events.insert(eventResource, CALENDAR_ID, { sendUpdates: 'all' });
         tasksSheet.getRange(sheetRow, col.eventId + 1).setValue(newEvent.id);
+
+        if (!String(row[col.status] || '').trim()) {
+          tasksSheet.getRange(sheetRow, col.status + 1).setValue(TASK_STATUS.NOT_STARTED);
+        }
+        created++;
       }
 
       // --- Success — clear any auto-note and uncheck ---
@@ -177,9 +193,11 @@ function processTask() {
       setAutoNote(checkboxRange, 'Code error; please contact your admin.');
     }
   }
+
+  console.log(`processTask: complete — ${created} created, ${updated} updated.`);
 }
 
-// --------------- Daily Reminders (7–8 AM trigger) ---------------
+// --------------- Daily Reminders (~8:00 AM trigger) ---------------
 
 /**
  * Sends reminder emails for tasks approaching their deadline.
@@ -190,6 +208,7 @@ function sendReminders() {
   const { tasksSheet, taskColMap } = env;
   const directory = loadDirectory(env.directorySheet, env.directoryColMap);
   const projectStatuses = loadProjectStatusMap(env.projectsSheet, env.projectColMap);
+  const spreadsheetUrl = env.ss.getUrl();
 
   const data = tasksSheet.getDataRange().getValues();
 
@@ -199,8 +218,12 @@ function sendReminders() {
     assignee: taskColMap[TASK_COLUMNS.ASSIGNEE],
     deadline: taskColMap[TASK_COLUMNS.DEADLINE],
     status:   taskColMap[TASK_COLUMNS.STATUS],
-    eventId:  taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID]
+    eventId:  taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID],
+    notes:    taskColMap[TASK_COLUMNS.NOTES]
   };
+
+  console.log('sendReminders: starting.');
+  let sent = 0;
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -228,11 +251,20 @@ function sendReminders() {
       const emails = resolveAssigneeEmails(assigneeStr, directory);
       if (emails.length === 0) continue;
 
+      const notes = String(row[col.notes] || '').trim();
+      const notesRow = notes
+        ? '<tr><td style="padding: 8px 12px; font-weight: bold; background: #f5f5f5;">Notes</td>'
+          + '<td style="padding: 8px 12px; background: #f5f5f5; word-break: break-word;">'
+          + escapeHtml(notes) + '</td></tr>'
+        : '';
+
       const tokens = {
-        TASK_NAME:     taskName,
-        PROJECT_NAME:  project || '(none)',
-        DEADLINE:      formatDateReadable(deadline),
-        DAYS_UNTIL_DUE: String(days)
+        TASK_NAME:      taskName,
+        PROJECT_NAME:   project || '(none)',
+        DEADLINE:       formatDateReadable(deadline),
+        DAYS_UNTIL_DUE: String(days),
+        NOTES_ROW:      notesRow,
+        SPREADSHEET_URL: spreadsheetUrl
       };
 
       const subject = substituteTokens(EMAIL_TEMPLATES.REMINDER.SUBJECT, tokens);
@@ -242,12 +274,16 @@ function sendReminders() {
       }));
 
       GmailApp.sendEmail(emails.join(','), subject, '', { htmlBody: body });
+      console.log(`Row ${sheetRow}: reminder sent for "${taskName}" (due in ${days} days, ${emails.length} recipient(s)).`);
+      sent++;
 
     }
     catch (err) {
       console.error(`Reminder error on row ${sheetRow}: ${err.message}`);
     }
   }
+
+  console.log(`sendReminders: complete — ${sent} reminder(s) sent.`);
 }
 
 // --------------- Trigger Setup (run once) ---------------
@@ -267,14 +303,15 @@ function createTriggers() {
 
   ScriptApp.newTrigger('processTask')
     .timeBased()
-    .everyMinutes(10)
+    .everyMinutes(5)
     .create();
 
   ScriptApp.newTrigger('sendReminders')
     .timeBased()
-    .atHour(7)
+    .atHour(8)
+    .nearMinute(0)
     .everyDays(1)
     .create();
 
-  console.log('Triggers created: processTask (every 10 min), sendReminders (daily 7–8 AM)');
+  console.log('Triggers created: processTask (every 5 min), sendReminders (daily ~8:00 AM)');
 }

@@ -45,7 +45,7 @@ const TASK_COLUMNS = {
   DOCUMENTS: 'Document & Links',
   NOTES: 'Notes',
   STATUS: 'Status',
-  UPDATE_REMINDERS: 'Update Reminders',
+  UPDATE_REMINDERS: 'Notify People',
   CALENDAR_EVENT_ID: '_calendar_event_id'
 };
 
@@ -97,7 +97,9 @@ const EMAIL_TEMPLATES = {
       '      <td style="padding: 8px 12px; font-weight: bold;">Days Remaining</td>',
       '      <td style="padding: 8px 12px;">{{DAYS_UNTIL_DUE}}</td>',
       '    </tr>',
+      '    {{NOTES_ROW}}',
       '  </table>',
+      '  <p><a href="{{SPREADSHEET_URL}}" style="color: #1a73e8;">Open Task Tracker</a></p>',
       '</div>'
     ].join('\n')
   },
