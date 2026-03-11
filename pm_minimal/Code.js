@@ -5,6 +5,37 @@
 //  Requires the Advanced Calendar Service to be enabled.
 // ============================================================
 
+
+// --------------- Trigger Setup (run once) ---------------
+
+/**
+ * Creates both time-driven triggers. Run once from the Apps Script editor.
+ * Safe to re-run — removes existing triggers for these functions first.
+ */
+function createTriggers() {
+  const managed = ['processTask', 'sendReminders'];
+
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (managed.indexOf(trigger.getHandlerFunction()) !== -1) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger('processTask')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+
+  ScriptApp.newTrigger('sendReminders')
+    .timeBased()
+    .atHour(8)
+    .nearMinute(0)
+    .everyDays(1)
+    .create();
+
+  console.log('Triggers created: processTask (every 5 min), sendReminders (daily ~8:00 AM)');
+}
+
 // --------------- Startup Validation ---------------
 
 /**
@@ -284,34 +315,4 @@ function sendReminders() {
   }
 
   console.log(`sendReminders: complete — ${sent} reminder(s) sent.`);
-}
-
-// --------------- Trigger Setup (run once) ---------------
-
-/**
- * Creates both time-driven triggers. Run once from the Apps Script editor.
- * Safe to re-run — removes existing triggers for these functions first.
- */
-function createTriggers() {
-  const managed = ['processTask', 'sendReminders'];
-
-  ScriptApp.getProjectTriggers().forEach(function(trigger) {
-    if (managed.indexOf(trigger.getHandlerFunction()) !== -1) {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-
-  ScriptApp.newTrigger('processTask')
-    .timeBased()
-    .everyMinutes(5)
-    .create();
-
-  ScriptApp.newTrigger('sendReminders')
-    .timeBased()
-    .atHour(8)
-    .nearMinute(0)
-    .everyDays(1)
-    .create();
-
-  console.log('Triggers created: processTask (every 5 min), sendReminders (daily ~8:00 AM)');
 }
