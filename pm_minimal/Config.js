@@ -32,18 +32,18 @@ const TAB_NAMES = {
 const PROJECT_COLUMNS = {
   TITLE: 'Title',
   LEADER: 'Leader',
-  DEADLINE: 'Deadline',
+  DEADLINE: 'Deadline (optional)',
   STATUS: 'Status',
   LINKS: 'Links to Folder'
 };
 
 const TASK_COLUMNS = {
-  TASK_NAME: 'Task Name',
+  TASK_NAME: 'Task Name*',
   PROJECT: 'Project / Initiative',
-  ASSIGNEE: 'Assignee',
-  DEADLINE: 'Deadline',
+  ASSIGNEE: 'Assignee*',
+  DEADLINE: 'Deadline*',
   DOCUMENTS: 'Document & Links',
-  NOTES: 'Notes',
+  DESCRIPTION: 'Description',
   STATUS: 'Status',
   UPDATE_REMINDERS: 'Notify People',
   CALENDAR_EVENT_ID: '_calendar_event_id'
@@ -78,7 +78,7 @@ const EMAIL_TEMPLATES = {
     SUBJECT: 'Reminder: {{TASK_NAME}} \u2014 Due in {{DAYS_UNTIL_DUE}} days',
     BODY: [
       '<div style="font-family: Arial, sans-serif; max-width: 600px;">',
-      '  <h2 style="color: #333;">Task Reminder</h2>',
+      '  <h2 style="color: #333;">Task Reminder: {{PROJECT_NAME}}</h2>',
       '  <p>This is a reminder that the following task is due soon:</p>',
       '  <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">',
       '    <tr>',
@@ -97,7 +97,7 @@ const EMAIL_TEMPLATES = {
       '      <td style="padding: 8px 12px; font-weight: bold;">Days Remaining</td>',
       '      <td style="padding: 8px 12px;">{{DAYS_UNTIL_DUE}}</td>',
       '    </tr>',
-      '    {{NOTES_ROW}}',
+      '    {{DESCRIPTION_ROW}}',
       '  </table>',
       '  <p><a href="{{SPREADSHEET_URL}}" style="color: #1a73e8;">Open Task Tracker</a></p>',
       '</div>'

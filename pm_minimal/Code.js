@@ -112,7 +112,8 @@ function processTask() {
     assignee:  taskColMap[TASK_COLUMNS.ASSIGNEE],
     deadline:  taskColMap[TASK_COLUMNS.DEADLINE],
     status:    taskColMap[TASK_COLUMNS.STATUS],
-    eventId:   taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID]
+    eventId:   taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID],
+    desc:      taskColMap[TASK_COLUMNS.DESCRIPTION]
   };
 
   const checkedCount = data.reduce((n, row, i) => n + (i > 0 && row[col.checkbox] === true ? 1 : 0), 0);
@@ -134,6 +135,7 @@ function processTask() {
       const assigneeStr = String(row[col.assignee] || '').trim();
       const deadline    = row[col.deadline];
       const existingId  = String(row[col.eventId]  || '').trim();
+      const description = String(row[col.desc]     || '').trim();
 
       // --- Required-field validation (skip row, leave checkbox checked) ---
       if (!taskName) {
@@ -180,6 +182,7 @@ function processTask() {
 
       const eventResource = {
         summary: summary,
+        description: description,
         start: { date: startDate },
         end:   { date: endDate },
         attendees: emails.map(function(e) { return { email: e }; })
@@ -250,7 +253,7 @@ function sendReminders() {
     deadline: taskColMap[TASK_COLUMNS.DEADLINE],
     status:   taskColMap[TASK_COLUMNS.STATUS],
     eventId:  taskColMap[TASK_COLUMNS.CALENDAR_EVENT_ID],
-    notes:    taskColMap[TASK_COLUMNS.NOTES]
+    desc:     taskColMap[TASK_COLUMNS.DESCRIPTION]
   };
 
   console.log('sendReminders: starting.');
@@ -282,19 +285,19 @@ function sendReminders() {
       const emails = resolveAssigneeEmails(assigneeStr, directory);
       if (emails.length === 0) continue;
 
-      const notes = String(row[col.notes] || '').trim();
-      const notesRow = notes
-        ? '<tr><td style="padding: 8px 12px; font-weight: bold; background: #f5f5f5;">Notes</td>'
+      const description = String(row[col.desc] || '').trim();
+      const descriptionRow = description
+        ? '<tr><td style="padding: 8px 12px; font-weight: bold; background: #f5f5f5;">Description</td>'
           + '<td style="padding: 8px 12px; background: #f5f5f5; word-break: break-word;">'
-          + escapeHtml(notes) + '</td></tr>'
+          + escapeHtml(description) + '</td></tr>'
         : '';
 
       const tokens = {
-        TASK_NAME:      taskName,
-        PROJECT_NAME:   project || '(none)',
-        DEADLINE:       formatDateReadable(deadline),
-        DAYS_UNTIL_DUE: String(days),
-        NOTES_ROW:      notesRow,
+        TASK_NAME:       taskName,
+        PROJECT_NAME:    project || '(none)',
+        DEADLINE:        formatDateReadable(deadline),
+        DAYS_UNTIL_DUE:  String(days),
+        DESCRIPTION_ROW: descriptionRow,
         SPREADSHEET_URL: spreadsheetUrl
       };
 
